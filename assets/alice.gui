@@ -573,6 +573,11 @@ guiTypes = {
 		spriteType = "GFX_alice_odds"
 		Orientation = "UPPER_LEFT"
 	}
+	iconType = {
+		name = "alice_tech_guide"
+		spriteType = "GFX_alice_tech_guide"
+		Orientation = "UPPER_LEFT"
+	}
 
 	guiButtonType = {
 		name = "goto_location_button"

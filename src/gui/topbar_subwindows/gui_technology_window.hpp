@@ -328,12 +328,99 @@ public:
 	}
 };
 
+class technology_item_guide_image : public image_element_base {
+	enum class tech_guide_type : uint8_t {
+		very_high,
+		high,
+		medium,
+		low,
+		very_low
+	};
+
+	static float modifier_get_value(sys::state& state, dcon::modifier_id mod) {
+		auto fat_id = dcon::fatten(state.world, mod);
+		const auto& def = fat_id.get_national_values();
+
+		float value = 0.f;
+		for(uint32_t i = 0; i < def.modifier_definition_size; ++i) {
+			if(!bool(def.offsets[i]))
+				break;
+			
+			// Prioritize technologies giving research points
+			if(def.values[i] > 0.f) {
+				if(def.offsets[i] == sys::national_mod_offsets::research_points)
+					value += 100.f * def.values[i];
+				if(def.offsets[i] == sys::national_mod_offsets::research_points_modifier)
+					value += 100.f * def.values[i];
+			}
+
+#define MOD_LIST_ELEMENT(num, name, green_is_negative, display_type, locale_name) \
+		if(def.offsets[i] == sys::national_mod_offsets::name) \
+			value += green_is_negative ? def.values[i] : -def.values[i];
+		MOD_NAT_LIST
+#undef MOD_LIST_ELEMENT
+		}
+		return value;
+	}
+
+	static tech_guide_type technology_get_guide_type(sys::state& state, dcon::technology_id tech_id) noexcept {
+		float value = modifier_get_value(state, state.world.technology_get_modifier(tech_id));
+		state.world.for_each_invention([&](dcon::invention_id id) {
+			auto lim_trigger_k = state.world.invention_get_limit(id);
+			bool activable_by_this_tech = false;
+			trigger::recurse_over_triggers(state.trigger_data.data() + state.trigger_data_indices[lim_trigger_k.index()], [&](uint16_t* tval) {
+				if((tval[0] & trigger::code_mask) == trigger::technology && trigger::payload(tval[1]).tech_id == tech_id)
+					activable_by_this_tech = true;
+			});
+			if(activable_by_this_tech)
+				value += modifier_get_value(state, state.world.invention_get_modifier(id));
+		});
+
+		if(value >= 1.f) {
+			if(value >= 5.f) {
+				if(value >= 10.f) {
+					if(value >= 25.f) {
+						return tech_guide_type::high;
+					}
+					return tech_guide_type::high;
+				}
+				return tech_guide_type::medium;
+			}
+			return tech_guide_type::low;
+		}
+		return tech_guide_type::very_low;
+	}
+public:
+	void on_update(sys::state& state) noexcept override {
+		if(parent) {
+			Cyto::Any payload = dcon::technology_id{};
+			parent->impl_get(state, payload);
+			auto content = any_cast<dcon::technology_id>(payload);
+			tech_guide_type t = technology_get_guide_type(state, content);
+			frame = int16_t(t);
+		}
+	}
+};
+
 class technology_item_window : public window_element_base {
 	technology_item_button* tech_button = nullptr;
 	culture::tech_category category;
 
 public:
 	dcon::technology_id tech_id{};
+
+	void on_create(sys::state& state) noexcept override {
+		window_element_base::on_create(state);
+
+		auto ptr = make_element_by_type<technology_item_guide_image>(state, state.ui_state.defs_by_name.find("alice_tech_guide")->second.definition);
+		ptr->base_data.position = base_data.position;
+		ptr->base_data.position.x += 4;
+		ptr->base_data.position.y += 4;
+		ptr->base_data.size = base_data.size;
+		ptr->base_data.size.x -= 6 + 4;
+		ptr->base_data.size.y -= 7 + 4;
+		add_child_to_front(std::move(ptr));
+	}
 
 	std::unique_ptr<element_base> make_child(sys::state& state, std::string_view name, dcon::gui_def_id id) noexcept override {
 		if(name == "start_research") {
