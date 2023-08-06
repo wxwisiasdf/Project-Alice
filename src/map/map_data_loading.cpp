@@ -104,7 +104,7 @@ void display_data::load_provinces_mid_point(parsers::scenario_building_context& 
 
 		glm::vec2 tile_pos;
 
-		assert(tiles_number[i] > 0); // yeah but a province without tiles is no bueno
+		//assert(tiles_number[i] > 0); // yeah but a province without tiles is no bueno
 
 		if(tiles_number[i] == 0) {
 			tile_pos = glm::vec2(0, 0);
@@ -157,9 +157,8 @@ void display_data::load_map_data(parsers::scenario_building_context& context) {
 	load_province_data(context, provinces_image);
 	load_terrain_data(context);
 	load_border_data(context);
-
-	auto size = glm::ivec2(size_x, size_y);
-	auto river_data = load_bmp(context, NATIVE("rivers.bmp"), size, 255);
+	
+	auto river_data = load_bmp(context, NATIVE("rivers.bmp"), glm::ivec2(size_x, size_y), 255);
 	river_vertices = create_river_vertices(*this, context, river_data);
 }
 

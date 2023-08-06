@@ -12,7 +12,7 @@
 
 #pragma comment(lib, "Ole32.lib")
 
-int WINAPI wWinMain(HINSTANCE /*hInstance*/, HINSTANCE /*hPrevInstance*/, LPWSTR /*lpCmdLine*/, int /*nCmdShow*/
+int WINAPI wWinMain(HINSTANCE /*hInstance*/, HINSTANCE /*hPrevInstance*/, LPWSTR lpCmdLine, int /*nCmdShow*/
 ) {
 
 #ifdef _DEBUG
@@ -45,6 +45,18 @@ int WINAPI wWinMain(HINSTANCE /*hInstance*/, HINSTANCE /*hPrevInstance*/, LPWSTR
 			add_root(game_state->common_fs, szBuffer);		// game files directory is overlaid on top of that
 			add_root(game_state->common_fs, NATIVE(".")); // for the moment this lets us find the shader files
 			RegCloseKey(hKey);
+		}
+
+		if(lpCmdLine) {
+			parsers::error_handler err("");
+			parsers::scenario_building_context context(*game_state);
+			auto root = get_root(game_state->common_fs);
+			auto mod_file = open_file(root, lpCmdLine);
+			auto content = view_contents(*mod_file);
+			err.file_name = lpCmdLine;
+			parsers::token_generator gen(content.data, content.data + content.file_size);
+			parsers::mod_file_context mod_file_context(context);
+			parsers::parse_mod_file(gen, err, mod_file_context);
 		}
 
 		if(!sys::try_read_scenario_and_save_file(*game_state, NATIVE("development_test_file.bin"))) {

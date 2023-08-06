@@ -926,9 +926,14 @@ std::string_view state::to_string_view(dcon::unit_name_id tag) const {
 }
 
 dcon::trigger_key state::commit_trigger_data(std::vector<uint16_t> data) {
+	if(trigger_data_indices.empty()) { //placeholder for invalid triggers
+		trigger_data_indices.push_back(0);
+		trigger_data.push_back(uint16_t(trigger::integer_scope));
+		trigger_data.push_back(uint16_t(2));
+		trigger_data.push_back(uint16_t(1));
+	}
+	
 	if(data.size() == 0) {
-		if(trigger_data_indices.empty())
-			trigger_data_indices.push_back(int32_t(0));
 		return dcon::trigger_key();
 	}
 
@@ -957,8 +962,15 @@ dcon::trigger_key state::commit_trigger_data(std::vector<uint16_t> data) {
 }
 
 dcon::effect_key state::commit_effect_data(std::vector<uint16_t> data) {
-	if(data.size() == 0)
+	if(effect_data.empty()) { //placeholder for invalid effects
+		effect_data.push_back(uint16_t(trigger::integer_scope));
+		effect_data.push_back(uint16_t(2));
+		effect_data.push_back(uint16_t(1));
+	}
+
+	if(data.size() == 0) {
 		return dcon::effect_key();
+	}
 
 	auto start = effect_data.size();
 	auto size = data.size();
