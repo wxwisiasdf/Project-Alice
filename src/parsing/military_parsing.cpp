@@ -29,8 +29,10 @@ void register_cb_type(std::string_view name, token_generator& gen, error_handler
 	uint32_t special_flags = 0;
 	if(is_fixed_token_ci(name.data(), name.data() + name.length(), "uninstall_communist_gov_cb"))
 		context.state.military_definitions.uninstall_communist_gov = id;
-	else if(is_fixed_token_ci(name.data(), name.data() + name.length(), "free_peoples"))
+	else if(is_fixed_token_ci(name.data(), name.data() + name.length(), "liberate_country"))
 		context.state.military_definitions.liberate = id;
+	else if(is_fixed_token_ci(name.data(), name.data() + name.length(), "status_quo"))
+		context.state.military_definitions.standard_status_quo = id;
 
 	context.state.world.cb_type_set_type_bits(id, special_flags);
 

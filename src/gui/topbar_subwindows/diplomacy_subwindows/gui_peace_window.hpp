@@ -10,11 +10,13 @@ public:
 		auto target = retrieve<dcon::nation_id>(state, parent);
 		auto war = military::find_war_between(state, target, state.local_player_nation);
 
-		auto we_lead = (state.local_player_nation == state.world.war_get_primary_attacker(war) || state.local_player_nation == state.world.war_get_primary_defender(war));
-		auto they_lead = (target == state.world.war_get_primary_attacker(war) || target == state.world.war_get_primary_defender(war));
+		auto const we_lead = (state.local_player_nation == state.world.war_get_primary_attacker(war) || state.local_player_nation == state.world.war_get_primary_defender(war));
+		auto const they_lead = (target == state.world.war_get_primary_attacker(war) || target == state.world.war_get_primary_defender(war));
 
-		text::add_line(state, contents, we_lead ? "po_welead" : "po_wenotlead");
-		text::add_line(state, contents, they_lead ? "po_theylead" : "po_theynotlead");
+		auto box = text::open_layout_box(contents);
+		text::localised_format_box(state, contents, box, we_lead ? std::string_view("po_welead") : std::string_view("po_wenotlead"));
+		text::localised_format_box(state, contents, box, they_lead ? std::string_view("po_theylead") : std::string_view("po_theynotlead"));
+		text::close_layout_box(contents, box);
 	}
 };
 
@@ -22,10 +24,7 @@ template<bool is_concession>
 class diplomacy_peace_tab_button : public button_element_base {
 public:
 	void button_action(sys::state& state) noexcept override {
-		if(parent) {
-			Cyto::Any payload = element_selection_wrapper<bool>{ is_concession };
-			parent->impl_get(state, payload);
-		}
+		send(state, parent, element_selection_wrapper<bool>{ is_concession });
 	}
 	void on_update(sys::state& state) noexcept override {
 		frame = (retrieve<bool>(state, parent) == is_concession) ? 1 : 0;
@@ -101,6 +100,7 @@ class diplomacy_peace_wargoal_score_text : public simple_text_element_base {
 public:
 	void on_update(sys::state& state) noexcept override {
 		auto wg = fatten(state.world, retrieve<dcon::wargoal_id>(state, parent));
+		assert(wg.is_valid());
 		int32_t score = military::peace_cost(state, retrieve<dcon::war_id>(state, parent), wg.get_type(), wg.get_added_by(), wg.get_target_nation(), wg.get_secondary_nation(), wg.get_associated_state(), wg.get_associated_tag());
 		set_text(state, std::to_string(score));
 	}
@@ -265,8 +265,15 @@ public:
 		return tooltip_behavior::variable_tooltip;
 	}
 	void update_tooltip(sys::state& state, int32_t x, int32_t y, text::columnar_layout& contents) noexcept override {
-		auto sent_to = retrieve<dcon::nation_id>(state, parent);
-		if(state.world.nation_get_is_player_controlled(sent_to)) {
+		auto target = retrieve<dcon::nation_id>(state, parent);
+
+		auto war = military::find_war_between(state, target, state.local_player_nation);
+		auto const we_lead = (state.local_player_nation == state.world.war_get_primary_attacker(war) || state.local_player_nation == state.world.war_get_primary_defender(war));
+		if(we_lead) {
+			text::add_line(state, contents, "alice_warn_war_ends_for_us");
+		}
+
+		if(state.world.nation_get_is_player_controlled(target)) {
 			// no tooltip -- no expected acceptance from players
 			return;
 		}
@@ -474,6 +481,9 @@ public:
 				target_personal_po_value, potential_peace_score_against,
 				my_side_against_target, my_side_peace_cost,
 				war_duration, contains_sq);
+
+			if(state.cheat_data.always_accept_deals)
+				acceptance = true;
 
 			payload.emplace<test_acceptance>(test_acceptance{ acceptance });
 			return message_result::consumed;

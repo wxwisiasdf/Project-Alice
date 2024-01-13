@@ -75,6 +75,20 @@ class autosave_display : public simple_text_element_base {
 	void on_update(sys::state& state) noexcept override;
 };
 
+class map_zoom_mode_left : public button_element_base {
+public:
+	void button_action(sys::state& state) noexcept override;
+	void on_update(sys::state& state) noexcept override;
+};
+class map_zoom_mode_right : public button_element_base {
+public:
+	void button_action(sys::state& state) noexcept override;
+	void on_update(sys::state& state) noexcept override;
+};
+class map_zoom_mode_display : public simple_text_element_base {
+	void on_update(sys::state& state) noexcept override;
+};
+
 class tooltip_mode_checkbox : public checkbox_button {
 public:
 	void button_action(sys::state& state) noexcept override;
@@ -83,6 +97,16 @@ public:
 class fow_checkbox : public checkbox_button {
 public:
 	void on_create(sys::state& state) noexcept override;
+	bool is_active(sys::state& state) noexcept override;
+	void button_action(sys::state& state) noexcept override;
+};
+class railroad_checkbox : public checkbox_button {
+public:
+	bool is_active(sys::state& state) noexcept override;
+	void button_action(sys::state& state) noexcept override;
+};
+class river_checkbox : public checkbox_button {
+public:
 	bool is_active(sys::state& state) noexcept override;
 	void button_action(sys::state& state) noexcept override;
 };
@@ -129,6 +153,34 @@ class gaussianblur_display : public simple_text_element_base {
 	void on_update(sys::state& state) noexcept override;
 };
 
+class gamma_left : public button_element_base {
+public:
+	void button_action(sys::state& state) noexcept override;
+	void on_update(sys::state& state) noexcept override;
+};
+class gamma_right : public button_element_base {
+public:
+	void button_action(sys::state& state) noexcept override;
+	void on_update(sys::state& state) noexcept override;
+};
+class gamma_display : public simple_text_element_base {
+	void on_update(sys::state& state) noexcept override;
+};
+
+class vassal_color_left : public button_element_base {
+public:
+	void button_action(sys::state& state) noexcept override;
+	void on_update(sys::state& state) noexcept override;
+};
+class vassal_color_right : public button_element_base {
+public:
+	void button_action(sys::state& state) noexcept override;
+	void on_update(sys::state& state) noexcept override;
+};
+class vassal_color_display : public simple_text_element_base {
+	void on_update(sys::state& state) noexcept override;
+};
+
 class music_player_left : public button_element_base {
 public:
 	void button_action(sys::state& state) noexcept override;
@@ -156,6 +208,12 @@ class controls_menu_window : public window_element_base {
 			return make_element_by_type<autosave_left>(state, id);
 		} else if(name == "auto_save_right") {
 			return make_element_by_type<autosave_right>(state, id);
+		} else if(name == "zoom_mode_value") {
+			return make_element_by_type<map_zoom_mode_display>(state, id);
+		} else if(name == "zoom_mode_left") {
+			return make_element_by_type<map_zoom_mode_left>(state, id);
+		} else if(name == "zoom_mode_right") {
+			return make_element_by_type<map_zoom_mode_right>(state, id);
 		} else if(name == "tooltip_mode_checkbox") {
 			return make_element_by_type<tooltip_mode_checkbox>(state, id);
 		} else {
@@ -200,6 +258,10 @@ class graphics_menu_window : public window_element_base {
 			return make_element_by_type<fonts_mode_checkbox>(state, id);
 		} else if(name == "fow_checkbox") {
 			return make_element_by_type<fow_checkbox>(state, id);
+		} else if(name == "railroad_checkbox") {
+			return make_element_by_type<railroad_checkbox>(state, id);
+		} else if(name == "river_checkbox") {
+			return make_element_by_type<river_checkbox>(state, id);
 		} else if(name == "map_label_value") {
 			return make_element_by_type<map_label_display>(state, id);
 		} else if(name == "map_label_left") {
@@ -218,6 +280,18 @@ class graphics_menu_window : public window_element_base {
 			return make_element_by_type<gaussianblur_left>(state, id);
 		} else if(name == "gaussianblur_right") {
 			return make_element_by_type<gaussianblur_right>(state, id);
+		} else if(name == "gamma_value") {
+			return make_element_by_type<gamma_display>(state, id);
+		} else if(name == "gamma_left") {
+			return make_element_by_type<gamma_left>(state, id);
+		} else if(name == "gamma_right") {
+			return make_element_by_type<gamma_right>(state, id);
+		} else if(name == "vassal_color_value") {
+			return make_element_by_type<vassal_color_display>(state, id);
+		} else if(name == "vassal_color_left") {
+			return make_element_by_type<vassal_color_left>(state, id);
+		} else if(name == "vassal_color_right") {
+			return make_element_by_type<vassal_color_right>(state, id);
 		} else {
 			return nullptr;
 		}
@@ -491,3 +565,4 @@ public:
 };
 
 } // namespace ui
+

@@ -97,6 +97,9 @@ enum class command_type : uint8_t {
 	toggle_hunt_rebels = 88,
 	toggle_select_province = 89,
 	toggle_immigrator_province = 90,
+	state_transfer = 91,
+	release_subject = 92,
+	enable_debt = 93,
 
 	// network
 	notify_player_ban = 106,
@@ -111,7 +114,6 @@ enum class command_type : uint8_t {
 	notify_pause_game = 115, // visual aid mostly
 	advance_tick = 120,
 	chat_message = 121,
-	release_subject = 122,
 
 	// console cheats
 	c_switch_nation = 128,
@@ -131,6 +133,9 @@ enum class command_type : uint8_t {
 	c_force_ally = 142,
 	c_toggle_ai = 143,
 	c_complete_constructions = 144,
+	c_change_owner = 145,
+	c_change_controller = 146,
+	c_instant_research = 147,
 };
 
 struct national_focus_data {
@@ -168,6 +173,7 @@ struct diplo_action_data {
 struct naval_unit_construction_data {
 	dcon::province_id location;
 	dcon::unit_type_id type;
+	dcon::province_id template_province;
 };
 
 struct rally_point_data {
@@ -180,6 +186,7 @@ struct land_unit_construction_data {
 	dcon::province_id location;
 	dcon::culture_id pop_culture;
 	dcon::unit_type_id type;
+	dcon::province_id template_province;
 };
 
 struct factory_data {
@@ -205,6 +212,11 @@ struct influence_priority_data {
 
 struct generic_location_data {
 	dcon::province_id prov;
+};
+
+struct cheat_location_data {
+	dcon::province_id prov;
+	dcon::nation_id n;
 };
 
 struct movement_data {
@@ -236,6 +248,7 @@ struct budget_settings_data {
 	int8_t middle_tax;
 	int8_t rich_tax;
 	int8_t tariffs;
+	int8_t domestic_investment;
 };
 
 struct war_target_data {
@@ -261,6 +274,11 @@ struct message_data {
 	dcon::nation_id from;
 	diplomatic_message::type type;
 	bool accept;
+};
+
+struct state_transfer_data {
+	dcon::nation_id target;
+	dcon::state_definition_id state;
 };
 
 struct call_to_arms_data {
@@ -455,6 +473,7 @@ struct payload {
 		pending_human_f_p_event_data pending_human_f_p_event;
 		cb_fabrication_data cb_fabrication;
 		message_data message;
+		state_transfer_data state_transfer;
 		call_to_arms_data call_to_arms;
 		new_war_data new_war;
 		new_war_goal_data new_war_goal;
@@ -481,6 +500,7 @@ struct payload {
 		save_game_data save_game;
 		notify_save_loaded_data notify_save_loaded;
 		sys::player_name player_name;
+		cheat_location_data cheat_location;
 
 		dtype() { }
 	} data;
@@ -517,11 +537,11 @@ bool can_begin_factory_building_construction(sys::state& state, dcon::nation_id 
 void cancel_factory_building_construction(sys::state& state, dcon::nation_id source, dcon::state_instance_id location, dcon::factory_type_id type);
 bool can_cancel_factory_building_construction(sys::state& state, dcon::nation_id source, dcon::state_instance_id location, dcon::factory_type_id type);
 
-void start_naval_unit_construction(sys::state& state, dcon::nation_id source, dcon::province_id location, dcon::unit_type_id type);
-bool can_start_naval_unit_construction(sys::state& state, dcon::nation_id source, dcon::province_id location, dcon::unit_type_id type);
+void start_naval_unit_construction(sys::state& state, dcon::nation_id source, dcon::province_id location, dcon::unit_type_id type, dcon::province_id template_province = dcon::province_id{});
+bool can_start_naval_unit_construction(sys::state& state, dcon::nation_id source, dcon::province_id location, dcon::unit_type_id type, dcon::province_id template_province = dcon::province_id{});
 
-void start_land_unit_construction(sys::state& state, dcon::nation_id source, dcon::province_id location, dcon::culture_id soldier_culture, dcon::unit_type_id type);
-bool can_start_land_unit_construction(sys::state& state, dcon::nation_id source, dcon::province_id location, dcon::culture_id soldier_culture, dcon::unit_type_id type);
+void start_land_unit_construction(sys::state& state, dcon::nation_id source, dcon::province_id location, dcon::culture_id soldier_culture, dcon::unit_type_id type, dcon::province_id template_province = dcon::province_id{});
+bool can_start_land_unit_construction(sys::state& state, dcon::nation_id source, dcon::province_id location, dcon::culture_id soldier_culture, dcon::unit_type_id type, dcon::province_id template_province = dcon::province_id{});
 
 void cancel_naval_unit_construction(sys::state& state, dcon::nation_id source, dcon::province_id location, dcon::unit_type_id type);
 bool can_cancel_naval_unit_construction(sys::state& state, dcon::nation_id source, dcon::province_id location, dcon::unit_type_id type);
@@ -552,7 +572,7 @@ bool can_increase_relations(sys::state& state, dcon::nation_id source, dcon::nat
 
 inline budget_settings_data make_empty_budget_settings() {
 	return budget_settings_data{ int8_t(-127), int8_t(-127), int8_t(-127), int8_t(-127), int8_t(-127), int8_t(-127), int8_t(-127),
-			int8_t(-127), int8_t(-127), int8_t(-127), int8_t(-127) };
+			int8_t(-127), int8_t(-127), int8_t(-127), int8_t(-127), int8_t(-127) };
 }
 // when sending new budget settings, leaving any value as int8_t(-127) will cause it to be ignored, leaving the setting the same
 // You can use the function above to easily make an instance of the settings struct that will change no values
@@ -644,28 +664,28 @@ void cancel_cb_fabrication(sys::state& state, dcon::nation_id source);
 bool can_cancel_cb_fabrication(sys::state& state, dcon::nation_id source);
 
 void ask_for_military_access(sys::state& state, dcon::nation_id asker, dcon::nation_id target);
-bool can_ask_for_access(sys::state& state, dcon::nation_id asker, dcon::nation_id target);
+bool can_ask_for_access(sys::state& state, dcon::nation_id asker, dcon::nation_id target, bool ignore_cost = false);
 
 void give_military_access(sys::state& state, dcon::nation_id asker, dcon::nation_id target);
-bool can_give_military_access(sys::state& state, dcon::nation_id asker, dcon::nation_id target);
+bool can_give_military_access(sys::state& state, dcon::nation_id asker, dcon::nation_id target, bool ignore_cost = false);
 
 void ask_for_alliance(sys::state& state, dcon::nation_id asker, dcon::nation_id target);
-bool can_ask_for_alliance(sys::state& state, dcon::nation_id asker, dcon::nation_id target);
+bool can_ask_for_alliance(sys::state& state, dcon::nation_id asker, dcon::nation_id target, bool ignore_cost = false);
 
 void call_to_arms(sys::state& state, dcon::nation_id asker, dcon::nation_id target, dcon::war_id w);
 void execute_call_to_arms(sys::state& state, dcon::nation_id asker, dcon::nation_id target, dcon::war_id w);
-bool can_call_to_arms(sys::state& state, dcon::nation_id asker, dcon::nation_id target, dcon::war_id w);
+bool can_call_to_arms(sys::state& state, dcon::nation_id asker, dcon::nation_id target, dcon::war_id w, bool ignore_cost = false);
 
 void respond_to_diplomatic_message(sys::state& state, dcon::nation_id source, dcon::nation_id from, diplomatic_message::type type, bool accept);
 
 void cancel_military_access(sys::state& state, dcon::nation_id source, dcon::nation_id target);
-bool can_cancel_military_access(sys::state& state, dcon::nation_id source, dcon::nation_id target);
+bool can_cancel_military_access(sys::state& state, dcon::nation_id source, dcon::nation_id target, bool ignore_cost = false);
 
 void cancel_alliance(sys::state& state, dcon::nation_id source, dcon::nation_id target);
-bool can_cancel_alliance(sys::state& state, dcon::nation_id source, dcon::nation_id target);
+bool can_cancel_alliance(sys::state& state, dcon::nation_id source, dcon::nation_id target, bool ignore_cost = false);
 
 void cancel_given_military_access(sys::state& state, dcon::nation_id source, dcon::nation_id target); // this is for cancelling the access someone has with you
-bool can_cancel_given_military_access(sys::state& state, dcon::nation_id source, dcon::nation_id target);
+bool can_cancel_given_military_access(sys::state& state, dcon::nation_id source, dcon::nation_id target, bool ignore_cost = false);
 
 void declare_war(sys::state& state, dcon::nation_id source, dcon::nation_id target, dcon::cb_type_id primary_cb, dcon::state_definition_id cb_state, dcon::national_identity_id cb_tag, dcon::nation_id cb_secondary_nation, bool call_attacker_allies);
 bool can_declare_war(sys::state& state, dcon::nation_id source, dcon::nation_id target, dcon::cb_type_id primary_cb, dcon::state_definition_id cb_state, dcon::national_identity_id cb_tag, dcon::nation_id cb_secondary_nation);
@@ -744,6 +764,8 @@ bool can_invite_to_crisis(sys::state& state, dcon::nation_id source, dcon::natio
 
 void toggle_mobilization(sys::state& state, dcon::nation_id source);
 
+void enable_debt(sys::state& state, dcon::nation_id source, bool debt_is_enabled);
+
 /*
 PEACE OFFER COMMANDS:
 
@@ -786,6 +808,9 @@ bool can_chat_message(sys::state& state, dcon::nation_id source, std::string_vie
 
 void release_subject(sys::state& state, dcon::nation_id source, dcon::nation_id target);
 bool can_release_subject(sys::state& state, dcon::nation_id source, dcon::nation_id target);
+
+void state_transfer(sys::state& state, dcon::nation_id asker, dcon::nation_id target, dcon::state_definition_id sid);
+bool can_state_transfer(sys::state& state, dcon::nation_id asker, dcon::nation_id target, dcon::state_definition_id sid);
 
 void advance_tick(sys::state& state, dcon::nation_id source);
 void notify_player_ban(sys::state& state, dcon::nation_id source, dcon::nation_id target);

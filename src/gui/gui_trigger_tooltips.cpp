@@ -1224,7 +1224,7 @@ void tf_technology(TRIGGER_DISPLAY_PARAMS) {
 
 	auto box = text::open_layout_box(layout, indentation);
 	make_condition(tval, ws, layout, primary_slot, this_slot, from_slot, indentation, show_condition, box);
-	display_with_has_comparison(tval[0], text::produce_simple_string(ws, "technology"), ws, layout, box);
+	display_with_has_comparison(tval[0], text::produce_simple_string(ws, "att_technology"), ws, layout, box);
 	text::add_space_to_layout_box(ws, layout, box);
 	text::add_to_layout_box(ws, layout, box, ws.world.technology_get_name(tech));
 	text::close_layout_box(layout, box);
@@ -2435,7 +2435,7 @@ void tf_has_country_flag(TRIGGER_DISPLAY_PARAMS) {
 	make_condition(tval, ws, layout, primary_slot, this_slot, from_slot, indentation, show_condition, box);
 	display_with_comparison(tval[0],
 			text::produce_simple_string(ws, ws.national_definitions.flag_variable_names[trigger::payload(tval[1]).natf_id]),
-			text::produce_simple_string(ws, "set"), ws, layout, box);
+			text::produce_simple_string(ws, "att_set"), ws, layout, box);
 	text::close_layout_box(layout, box);
 }
 void tf_continent_province(TRIGGER_DISPLAY_PARAMS) {
@@ -3290,14 +3290,14 @@ void tf_plurality(TRIGGER_DISPLAY_PARAMS) {
 	auto box = text::open_layout_box(layout, indentation);
 	make_condition(tval, ws, layout, primary_slot, this_slot, from_slot, indentation, show_condition, box);
 	display_with_comparison(tval[0], text::produce_simple_string(ws, "plurality"),
-			text::fp_percentage{trigger::read_float_from_payload(tval + 1) / 100.0f}, ws, layout, box);
+			text::fp_percentage{trigger::read_float_from_payload(tval + 1) / 10000.0f}, ws, layout, box);
 	text::close_layout_box(layout, box);
 }
 void tf_plurality_pop(TRIGGER_DISPLAY_PARAMS) {
 	auto box = text::open_layout_box(layout, indentation);
 	make_condition(tval, ws, layout, primary_slot, this_slot, from_slot, indentation, show_condition, box);
 	display_with_comparison(tval[0], text::produce_simple_string(ws, "plurality_pop"),
-			text::fp_percentage{ trigger::read_float_from_payload(tval + 1) / 100.0f }, ws, layout, box);
+			text::fp_percentage{ trigger::read_float_from_payload(tval + 1) / 10000.0f }, ws, layout, box);
 	text::close_layout_box(layout, box);
 }
 void tf_corruption(TRIGGER_DISPLAY_PARAMS) {
@@ -4169,28 +4169,28 @@ void tf_truce_with_this_pop(TRIGGER_DISPLAY_PARAMS) {
 void tf_total_pops_nation(TRIGGER_DISPLAY_PARAMS) {
 	auto box = text::open_layout_box(layout, indentation);
 	make_condition(tval, ws, layout, primary_slot, this_slot, from_slot, indentation, show_condition, box);
-	display_with_comparison(tval[0], text::produce_simple_string(ws, "population"),
+	display_with_comparison(tval[0], text::produce_simple_string(ws, "att_population"),
 			int64_t(trigger::read_float_from_payload(tval + 1)), ws, layout, box);
 	text::close_layout_box(layout, box);
 }
 void tf_total_pops_state(TRIGGER_DISPLAY_PARAMS) {
 	auto box = text::open_layout_box(layout, indentation);
 	make_condition(tval, ws, layout, primary_slot, this_slot, from_slot, indentation, show_condition, box);
-	display_with_comparison(tval[0], text::produce_simple_string(ws, "population"),
+	display_with_comparison(tval[0], text::produce_simple_string(ws, "att_population"),
 			int64_t(trigger::read_float_from_payload(tval + 1)), ws, layout, box);
 	text::close_layout_box(layout, box);
 }
 void tf_total_pops_province(TRIGGER_DISPLAY_PARAMS) {
 	auto box = text::open_layout_box(layout, indentation);
 	make_condition(tval, ws, layout, primary_slot, this_slot, from_slot, indentation, show_condition, box);
-	display_with_comparison(tval[0], text::produce_simple_string(ws, "population"),
+	display_with_comparison(tval[0], text::produce_simple_string(ws, "att_population"),
 			int64_t(trigger::read_float_from_payload(tval + 1)), ws, layout, box);
 	text::close_layout_box(layout, box);
 }
 void tf_total_pops_pop(TRIGGER_DISPLAY_PARAMS) {
 	auto box = text::open_layout_box(layout, indentation);
 	make_condition(tval, ws, layout, primary_slot, this_slot, from_slot, indentation, show_condition, box);
-	display_with_comparison(tval[0], text::produce_simple_string(ws, "population"),
+	display_with_comparison(tval[0], text::produce_simple_string(ws, "att_population"),
 			int64_t(trigger::read_float_from_payload(tval + 1)), ws, layout, box);
 	text::close_layout_box(layout, box);
 }
@@ -5688,7 +5688,7 @@ void tf_constructing_cb_progress(TRIGGER_DISPLAY_PARAMS) {
 	auto box = text::open_layout_box(layout, indentation);
 	make_condition(tval, ws, layout, primary_slot, this_slot, from_slot, indentation, show_condition, box);
 	display_with_comparison(tval[0], text::produce_simple_string(ws, "cb_progress"),
-			text::fp_percentage{trigger::read_float_from_payload(tval + 1)}, ws, layout, box);
+			text::fp_percentage{trigger::read_float_from_payload(tval + 1) / 100.0f}, ws, layout, box);
 	text::close_layout_box(layout, box);
 }
 void tf_civilization_progress(TRIGGER_DISPLAY_PARAMS) {

@@ -364,8 +364,9 @@ public:
 			auto grid = std::get<dcon::gp_relationship_id>(content);
 			auto nid = state.world.gp_relationship_get_influence_target(grid);
 			auto status = state.world.gp_relationship_get_status(grid);
+			auto influence = state.world.gp_relationship_get_influence(grid);
 
-			auto full_str = text::produce_simple_string(state, state.world.nation_get_name(nid)) + " (" + text::get_influence_level_name(state, status) + ")";
+			auto full_str = text::produce_simple_string(state, state.world.nation_get_name(nid)) + " (" + text::get_influence_level_name(state, status) + ", " + text::format_float(influence, 0) + ")";
 
 			color = text::text_color::white;
 			set_text(state, full_str);
@@ -398,7 +399,7 @@ public:
 			auto name = economy::province_building_type_get_name(economy::province_building_type(btid));
 			float progress = economy::province_building_construction(state, state.world.province_building_construction_get_province(pbcid), economy::province_building_type(btid)).progress;
 
-			auto full_str = std::string(name) + " (" + text::format_percentage(progress, 0) + ")";
+			auto full_str = text::produce_simple_string(state, name) + " (" + text::format_percentage(progress, 0) + ")";
 
 			color = text::text_color::white;
 			set_text(state, full_str);
@@ -430,8 +431,18 @@ public:
 				color = text::text_color::white;
 				set_text(state, full_str);
 			} else if(fat_nf.get_promotion_type()) {
-				auto full_str = text::produce_simple_string(state, fat_nf.get_name()) + " (" + text::get_dynamic_state_name(state, siid) + ", "  + text::format_percentage(fat_si.get_demographics(demographics::to_key(state, fat_nf.get_promotion_type())) / fat_si.get_demographics(demographics::total)) + ")";
 				color = text::text_color::white;
+				//Is the NF not optimal? Recolor it
+				if(fat_nf.get_promotion_type() == state.culture_definitions.clergy) {
+					if((fat_si.get_demographics(demographics::to_key(state, fat_nf.get_promotion_type())) / fat_si.get_demographics(demographics::total)) > state.defines.max_clergy_for_literacy) {
+						color = text::text_color::red;
+					}
+				} else if(fat_nf.get_promotion_type() == state.culture_definitions.bureaucrat) {
+					if(province::state_admin_efficiency(state, fat_si.id) > state.defines.max_bureaucracy_percentage) {
+						color = text::text_color::red;
+					}
+				}
+				auto full_str = text::format_percentage(fat_si.get_demographics(demographics::to_key(state, fat_nf.get_promotion_type())) / fat_si.get_demographics(demographics::total)) + " " + text::produce_simple_string(state, fat_nf.get_name()) + " (" + text::get_dynamic_state_name(state, siid) + ")";
 				set_text(state, full_str);
 			} else {
 				auto full_str = text::produce_simple_string(state, fat_nf.get_name()) + " (" + text::get_dynamic_state_name(state, siid) + ")";

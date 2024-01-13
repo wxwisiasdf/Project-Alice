@@ -38,6 +38,7 @@
 namespace sys {
 
 enum class gui_modes : uint8_t { faithful = 0, nouveau = 1, dummycabooseval = 2 };
+enum class projection_mode : uint8_t { globe_ortho = 0, flat = 1, globe_perpect = 2, num_of_modes = 3};
 
 struct user_settings_s {
 	float ui_scale = 1.0f;
@@ -46,7 +47,7 @@ struct user_settings_s {
 	float effects_volume = 1.0f;
 	float interface_volume = 1.0f;
 	bool prefer_fullscreen = false;
-	bool map_is_globe = true;
+	projection_mode map_is_globe = projection_mode::globe_ortho;
 	autosave_frequency autosaves = autosave_frequency::yearly;
 	bool bind_tooltip_mouse = true;
 	bool use_classic_fonts = false;
@@ -152,6 +153,7 @@ struct user_settings_s {
 		message_response::ignore,//crisis_voluntary_joi_on = 97,
 		message_response::log,//army_built = 98,
 		message_response::log,//navy_built = 99,
+		message_response::standard_popup,//bankruptcy = 100,
 	};
 	uint8_t interesting_message_settings[int32_t(sys::message_setting_type::count)] = {
 		message_response::log,//revolt = 0,
@@ -254,6 +256,7 @@ struct user_settings_s {
 		message_response::standard_popup,//crisis_voluntary_join_on = 97,
 		message_response::ignore,//army_built = 98,
 		message_response::ignore,//navy_built = 99,
+		message_response::standard_popup,//bankruptcy = 100,
 	};
 	uint8_t other_message_settings[int32_t(sys::message_setting_type::count)] = {
 		message_response::ignore,//revolt = 0,
@@ -356,11 +359,17 @@ struct user_settings_s {
 		message_response::standard_popup,//crisis_voluntary_join_on = 97,
 		message_response::ignore,//army_built = 98,
 		message_response::ignore,//navy_built = 99,
+		message_response::standard_popup,//bankruptcy = 100,
 	};
 	bool fow_enabled = false;
 	map_label_mode map_label = map_label_mode::quadratic;
 	uint8_t antialias_level = 0;
 	float gaussianblur_level = 1.f;
+	float gamma = 1.f;
+	bool railroads_enabled = true;
+	bool rivers_enabled = true;
+	map_zoom_mode zoom_mode = map_zoom_mode::panning;
+	map_vassal_color_mode vassal_color = map_vassal_color_mode::inherit;
 };
 
 struct global_scenario_data_s { // this struct holds miscellaneous global properties of the scenario
@@ -370,6 +379,8 @@ struct cheat_data_s {
 	bool always_allow_wargoals = false;
 	bool always_allow_reforms = false;
 	bool always_accept_deals = false;
+	bool show_province_id_tooltip = false;
+	std::vector<dcon::nation_id> instant_research_nations;
 };
 
 struct crisis_member_def {
@@ -461,6 +472,7 @@ struct alignas(64) state {
 
 	uint64_t scenario_time_stamp = 0;	// for identifying the scenario file
 	uint32_t scenario_counter = 0;		// as above
+	int32_t autosave_counter = 0; // which autosave file is next
 	sys::checksum_key scenario_checksum;// for checksum for savefiles
 	sys::checksum_key session_host_checksum;// for checking that the client can join a session
 	native_string loaded_scenario_file;
@@ -535,6 +547,7 @@ struct alignas(64) state {
 	std::vector<dcon::army_id> selected_armies;
 	std::vector<dcon::navy_id> selected_navies;
 	std::optional<state_selection_data> state_selection;
+	map_mode::mode stored_map_mode;
 
 	simple_fs::file_system common_fs;                                // file system for looking up graphics assets, etc
 	std::unique_ptr<window::window_data_impl> win_ptr = nullptr;     // platform-dependent window information
@@ -550,6 +563,7 @@ struct alignas(64) state {
 	std::atomic<int32_t> actual_game_speed = 0;                      // ui -> game state message
 	rigtorp::SPSCQueue<command::payload> incoming_commands;          // ui or network -> local gamestate
 	std::atomic<bool> ui_pause = false;                              // force pause by an important message being open
+	std::atomic<bool> railroad_built = true; // game state -> map
 
 	// synchronization: notifications from the gamestate to ui
 	rigtorp::SPSCQueue<event::pending_human_n_event> new_n_event;
@@ -582,6 +596,10 @@ struct alignas(64) state {
 
 	// graphics data
 	ogl::data open_gl;
+
+#ifdef DIRECTX_11
+	directx::data directx;
+#endif
 
 	// cheat data
 	cheat_data_s cheat_data;
@@ -617,9 +635,9 @@ struct alignas(64) state {
 	void debug_save_oos_dump();
 	void debug_scenario_oos_dump();
 
-	void start_state_selection(sys::state& state, state_selection_data& data);
-	void finish_state_selection(sys::state& state);
-	void state_select(sys::state& state, dcon::state_definition_id sdef);
+	void start_state_selection(state_selection_data& data);
+	void finish_state_selection();
+	void state_select(dcon::state_definition_id sdef);
 
 	// the following function are for interacting with the string pool
 
@@ -643,7 +661,7 @@ struct alignas(64) state {
 
 	state() : key_to_text_sequence(0, text::vector_backed_hash(text_data), text::vector_backed_eq(text_data)), incoming_commands(1024), new_n_event(1024), new_f_n_event(1024), new_p_event(1024), new_f_p_event(1024), new_requests(256), new_messages(2048), naval_battle_reports(256), land_battle_reports(256) { }
 
-	~state();
+	~state() = default;
 
 	void save_user_settings() const;
 	void load_user_settings();

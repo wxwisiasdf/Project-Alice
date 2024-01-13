@@ -116,6 +116,9 @@ void update_connected_regions(sys::state& state) {
 		}
 	}
 
+	// we also invalidate wargoals here that are now unowned
+	military::invalidate_unowned_wargoals(state);
+
 	state.province_ownership_changed.store(true, std::memory_order::release);
 }
 
@@ -202,7 +205,7 @@ void restore_cached_values(sys::state& state) {
 	state.world.execute_serial_over_nation([&](auto ids) { state.world.nation_set_owned_state_count(ids, ve::int_vector()); });
 	state.world.execute_serial_over_nation([&](auto ids) { state.world.nation_set_is_colonial_nation(ids, ve::mask_vector()); });
 
-	// need to set owner cores first becasue capital selection depends on them
+	// need to set owner cores first because capital selection depends on them
 
 	for(int32_t i = 0; i < state.province_definitions.first_sea_province.index(); ++i) {
 		dcon::province_id pid{dcon::province_id::value_base_t(i)};
@@ -739,6 +742,9 @@ void change_province_owner(sys::state& state, dcon::province_id id, dcon::nation
 	bool state_is_new = false;
 	dcon::state_instance_id new_si;
 
+	auto pmods = state.world.province_get_current_modifiers(id);
+	pmods.clear();
+
 	bool will_be_colonial = state.world.province_get_is_colonial(id) ||
 													(old_owner && state.world.nation_get_is_civilized(old_owner) == false &&
 															state.world.nation_get_is_civilized(new_owner) == true) ||
@@ -815,12 +821,9 @@ void change_province_owner(sys::state& state, dcon::province_id id, dcon::nation
 					p.get_pop().set_is_primary_or_accepted_culture(true);
 					return;
 				}
-				auto accepted = state.world.nation_get_accepted_cultures(new_owner);
-				for(auto c : accepted) {
-					if(c == p.get_pop().get_culture()) {
-						p.get_pop().set_is_primary_or_accepted_culture(true);
-						return;
-					}
+				if(state.world.nation_get_accepted_cultures(new_owner, p.get_pop().get_culture())) {
+					p.get_pop().set_is_primary_or_accepted_culture(true);
+					return;
 				}
 				p.get_pop().set_is_primary_or_accepted_culture(false);
 			}();
@@ -842,25 +845,23 @@ void change_province_owner(sys::state& state, dcon::province_id id, dcon::nation
 		}
 	}
 
-	static std::vector<dcon::regiment_id> regs;
-	regs.clear();
 	for(auto p : state.world.province_get_pop_location(id)) {
 		rebel::remove_pop_from_movement(state, p.get_pop());
 		rebel::remove_pop_from_rebel_faction(state, p.get_pop());
 
-		for(auto r : p.get_pop().get_regiment_source()) {
-			regs.push_back(r.get_regiment().id);
+		{
+			auto rng = p.get_pop().get_regiment_source();
+			while(rng.begin() != rng.end()) {
+				state.world.delete_regiment_source(*(rng.begin()));
+			}
 		}
-		
+
 		{
 			auto rng = p.get_pop().get_province_land_construction();
 			while(rng.begin() != rng.end()) {
 				state.world.delete_province_land_construction(*(rng.begin()));
 			}
 		}
-	}
-	for(auto r : regs) {
-		state.world.delete_regiment(r);
 	}
 
 	state.world.province_set_nation_from_province_ownership(id, new_owner);
@@ -922,6 +923,16 @@ void change_province_owner(sys::state& state, dcon::province_id id, dcon::nation
 			adj.set_type(adj.get_type() & ~province::border::national_bit);
 		} else {
 			adj.set_type(adj.get_type() | province::border::national_bit);
+		}
+	}
+
+	/* Properly cleanup rebels when the province ownership changes */
+	for(auto ar : state.world.province_get_army_location_as_location(id)) {
+		if(ar.get_army() && ar.get_army().get_army_rebel_control().get_controller()) {
+			assert(!ar.get_army().get_army_control().get_controller());
+			state.world.army_set_controller_from_army_control(ar.get_army(), dcon::nation_id{});
+			state.world.army_set_controller_from_army_rebel_control(ar.get_army(), dcon::rebel_faction_id{});
+			state.world.army_set_is_retreating(ar.get_army(), true);
 		}
 	}
 
@@ -1587,6 +1598,9 @@ bool has_naval_access_to_province(sys::state& state, dcon::nation_id nation_as, 
 		return false;
 
 	if(controller == nation_as)
+		return true;
+
+	if(state.world.nation_get_in_sphere_of(controller) == nation_as)
 		return true;
 
 	auto coverl = state.world.nation_get_overlord_as_subject(controller);

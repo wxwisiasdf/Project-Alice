@@ -78,12 +78,16 @@ enum class flag_type : uint8_t {
 	agrarism,
 	national_syndicalist,
 	theocratic,
+	slot1,
+	slot2,
+	slot3,
+	slot4,
 	count
 };
 
 constexpr inline uint64_t to_bits(dcon::ideology_id id) {
 	if(id)
-		return uint64_t(1 << id.index());
+		return uint64_t(1 << uint64_t(id.index()));
 	else
 		return 0;
 }

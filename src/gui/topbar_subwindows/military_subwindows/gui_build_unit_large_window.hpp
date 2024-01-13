@@ -560,7 +560,7 @@ public:
 						info.is_navy = false;
 						for(auto pl : state.world.province_get_pop_location_as_province(p)) {
 							if(pl.get_pop().get_culture() == c) {
-								if(pl.get_pop().get_poptype() == state.culture_definitions.soldiers && state.world.pop_get_size(pl.get_pop()) >= 1000.0f) {
+								if(pl.get_pop().get_poptype() == state.culture_definitions.soldiers && state.world.pop_get_size(pl.get_pop()) >= state.defines.pop_min_size_for_regiment) {
 									info.pop_info = pl.get_pop();
 									break;
 								}
@@ -786,8 +786,7 @@ public:
 
 	std::unique_ptr<element_base> make_child(sys::state& state, std::string_view name, dcon::gui_def_id id) noexcept override {
 		if(name == "cancel_all_units") {
-			auto ptr = make_element_by_type<cancel_all_units_button>(state, id);
-			return ptr;
+			return make_element_by_type<cancel_all_units_button>(state, id);
 		} else if(name == "build_army_label") {
 			auto ptr = make_element_by_type<simple_text_element_base>(state, id);
 			army_elements.push_back(ptr.get());
@@ -797,8 +796,7 @@ public:
 			navy_elements.push_back(ptr.get());
 			return ptr;
 		} else if(name == "close") {
-			auto ptr = make_element_by_type<build_unit_close_button>(state, id);
-			return ptr;
+			return make_element_by_type<build_unit_close_button>(state, id);
 		} else if(name == "list") {
 			auto ptr = make_element_by_type<units_build_listbox>(state, id);
 			units_listbox = ptr.get();
@@ -826,7 +824,7 @@ public:
 			auto ptr = make_element_by_type<unit_folder_button>(state, id);
 			int32_t value = std::stoi(std::string(name.substr(12)));
 			for(uint8_t i = 0; i < state.military_definitions.unit_base_definitions.size(); i++) {
-				auto def = state.military_definitions.unit_base_definitions[dcon::unit_type_id(i)];
+				auto const& def = state.military_definitions.unit_base_definitions[dcon::unit_type_id(i)];
 				if(def.icon == value) {
 					ptr->unit_type = dcon::unit_type_id(i);
 					if(def.is_land) {
@@ -840,8 +838,7 @@ public:
 			}
 			return ptr;
 		} else if(name == "military_recruit_bg") {
-			auto ptr = make_element_by_type<opaque_element_base>(state, id);
-			return ptr;
+			return make_element_by_type<opaque_element_base>(state, id);
 		} else {
 			return nullptr;
 		}
@@ -904,6 +901,43 @@ public:
 			return message_result::consumed;
 		}
 		return message_result::unseen;
+	}
+
+	void on_update(sys::state& state) noexcept override {
+		if(state.military_definitions.unit_base_definitions[unit_type].is_land) {
+			dcon::unit_type_id utid = dcon::unit_type_id{ 0 };
+			uint32_t count = 0;
+			uint8_t unit_def_count = 0;
+			for(auto const& testing : state.military_definitions.unit_base_definitions) {
+				if(state.military_definitions.unit_base_definitions[dcon::unit_type_id{ unit_def_count }].is_land) {
+					if(!state.military_definitions.unit_base_definitions[dcon::unit_type_id{ unit_def_count }].primary_culture) {
+						//continue;
+					}
+				}
+				unit_def_count++;
+			}
+			utid = dcon::unit_type_id{ unit_def_count };
+			for(auto ucon : state.world.nation_get_province_land_construction(state.local_player_nation)) {
+				count++;
+				if(count) {
+					return;
+				}
+			}
+			for(auto po : state.world.nation_get_province_ownership_as_nation(state.local_player_nation)) {
+				auto p = po.get_province();
+				state.world.for_each_culture([&](dcon::culture_id c) {
+					if(command::can_start_land_unit_construction(state, state.local_player_nation, p, c, utid)) {
+						count++;
+					}
+				});
+				if(count) {
+					return;
+				}
+			}
+			state.ui_state.unit_window_army->set_visible(state, true);
+			state.ui_state.unit_window_navy->set_visible(state, true);
+			set_visible(state, false);
+		}
 	}
 
 	std::vector<element_base*> army_elements;

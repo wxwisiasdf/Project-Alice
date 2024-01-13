@@ -1,6 +1,7 @@
 #ifdef LOCAL_USER_SETTINGS
 #include "local_user_settings.hpp"
 #endif
+#include "common_types.cpp"
 #include "system_state.cpp"
 #include "parsers.cpp"
 #include "defines.cpp"
@@ -56,6 +57,11 @@
 #ifdef _WIN64
 // WINDOWS implementations go here
 
+#pragma comment(lib, "d2d1.lib")
+#pragma comment(lib, "D3D11.lib")
+#pragma comment(lib, "dxguid.lib")
+#pragma comment(lib, "d3dcompiler.lib")
+
 #include "simple_fs_win.cpp"
 #include "window_win.cpp"
 #include "sound_win.cpp"
@@ -85,12 +91,6 @@
 extern "C" {
 #include "blake2.c"
 };
-
-namespace sys {
-state::~state() {
-	// why does this exist ? So that the destructor of the unique pointer doesn't have to be known before it is implemented
-}
-} // namespace sys
 
 // zstd
 extern "C" {

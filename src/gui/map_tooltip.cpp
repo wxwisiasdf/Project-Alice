@@ -7,7 +7,13 @@ void country_name_box(sys::state& state, text::columnar_layout& contents, dcon::
 	auto fat = dcon::fatten(state.world, prov);
 	auto owner = fat.get_nation_from_province_ownership();
 	auto box = text::open_layout_box(contents);
-	
+
+	if(state.cheat_data.show_province_id_tooltip) {
+		text::add_to_layout_box(state, contents, box, std::string_view{ "PROVID: " });
+		text::add_to_layout_box(state, contents, box, prov.index());
+		text::add_divider_to_layout_box(state, contents, box);
+	}
+
 	if(owner) {
 		text::add_to_layout_box(state, contents, box, fat.get_name());
 		text::add_to_layout_box(state, contents, box, std::string_view{ " (" });
@@ -40,28 +46,43 @@ void terrain_map_tt_box(sys::state& state, text::columnar_layout& contents, dcon
 
 void political_map_tt_box(sys::state& state, text::columnar_layout& contents, dcon::province_id prov) {   // Done
 	country_name_box(state, contents, prov);
-	//auto box = text::open_layout_box(contents);
-	//text::close_layout_box(contents, box);
+	if(auto n = state.world.province_get_nation_from_province_control(prov); n && n != state.world.province_get_nation_from_province_ownership(prov)) {
+		auto fat_id = dcon::fatten(state.world, n);
+		auto box = text::open_layout_box(contents);
+		std::string formatted_tag = std::string("@") + nations::int_to_tag(fat_id.get_identity_from_identity_holder().get_identifying_int());
+		text::add_to_layout_box(state, contents, box, std::string_view{ formatted_tag });
+		text::add_space_to_layout_box(state, contents, box);
+		text::add_to_layout_box(state, contents, box, fat_id.get_name());
+		text::close_layout_box(contents, box);
+	} else if(auto rf = state.world.province_get_rebel_faction_from_province_rebel_control(prov); rf) {
+		auto fat_id = dcon::fatten(state.world, rf);
+		auto box = text::open_layout_box(contents);
+		std::string formatted_tag = std::string("@") + nations::int_to_tag(state.world.national_identity_get_identifying_int(state.world.nation_get_identity_from_identity_holder(state.national_definitions.rebel_id)));
+		text::add_to_layout_box(state, contents, box, std::string_view{ formatted_tag });
+		text::add_space_to_layout_box(state, contents, box);
+		auto name = rebel::rebel_name(state, rf);
+		text::add_to_layout_box(state, contents, box, std::string_view{ name });
+		text::close_layout_box(contents, box);
+	}
 }
 
-void revolt_map_tt_box(sys::state& state, text::columnar_layout& contents, dcon::province_id prov) {  // Done 
+void revolt_map_tt_box(sys::state& state, text::columnar_layout& contents, dcon::province_id prov) {  // Done
 	auto fat = dcon::fatten(state.world, prov);
 	country_name_box(state, contents, prov);
 
 	if(prov.value < state.province_definitions.first_sea_province.value) {
-		auto box = text::open_layout_box(contents);
-		text::localised_single_sub_box(state, contents, box, std::string_view("avg_mil_on_map"), text::variable_type::value, text::fp_one_place{ province::revolt_risk(state, prov) });
+		text::add_line(state, contents, "avg_mil_on_map", text::variable_type::value, text::fp_one_place{ province::revolt_risk(state, prov) });
 		ui::active_modifiers_description(state, contents, prov, 0, sys::provincial_mod_offsets::pop_militancy_modifier, true);
 		ui::active_modifiers_description(state, contents, state.world.province_control_get_nation(state.world.province_get_province_control_as_province(prov)), 0, sys::national_mod_offsets::core_pop_militancy_modifier, true);
 		ui::active_modifiers_description(state, contents, state.world.province_control_get_nation(state.world.province_get_province_control_as_province(prov)), 0, sys::national_mod_offsets::global_pop_militancy_modifier, true);
 		ui::active_modifiers_description(state, contents, state.world.province_control_get_nation(state.world.province_get_province_control_as_province(prov)), 0, sys::national_mod_offsets::non_accepted_pop_militancy_modifier, true);
+
 		if(fat.get_crime()) {
-			text::add_line_break_to_layout_box(state, contents, box);
-			text::add_to_layout_box(state, contents, box, state.culture_definitions.crimes[fat.get_crime()].name);
-			text::add_divider_to_layout_box(state, contents, box);
+			text::add_line_break_to_layout(state, contents);
+			text::add_line(state, contents, state.culture_definitions.crimes[fat.get_crime()].name);
+			ui::modifier_description(state, contents, state.culture_definitions.crimes[fat.get_crime()].modifier);
 		}
-		text::close_layout_box(contents, box);
-		ui::modifier_description(state, contents, state.culture_definitions.crimes[fat.get_crime()].modifier);
+
 	}
 }
 
@@ -129,7 +150,7 @@ void diplomatic_map_tt_box(sys::state& state, text::columnar_layout& contents, d
 	}
 }
 
-void region_map_tt_box(sys::state& state, text::columnar_layout& contents, dcon::province_id prov) {  // Done 
+void region_map_tt_box(sys::state& state, text::columnar_layout& contents, dcon::province_id prov) {  // Done
 	auto fat = dcon::fatten(state.world, prov);
 	country_name_box(state, contents, prov);
 
@@ -210,7 +231,7 @@ void colonial_map_tt_box(sys::state& state, text::columnar_layout& contents, dco
 	}
 }
 
-void admin_map_tt_box(sys::state& state, text::columnar_layout& contents, dcon::province_id prov) {   // Done 
+void admin_map_tt_box(sys::state& state, text::columnar_layout& contents, dcon::province_id prov) {   // Done
 	auto fat = dcon::fatten(state.world, prov);
 	country_name_box(state, contents, prov);
 
@@ -327,7 +348,7 @@ void nationality_map_tt_box(sys::state& state, text::columnar_layout& contents, 
 	}
 }
 
-void sphere_map_tt_box(sys::state& state, text::columnar_layout& contents, dcon::province_id prov) {  // Done 
+void sphere_map_tt_box(sys::state& state, text::columnar_layout& contents, dcon::province_id prov) {  // Done
 	auto fat = dcon::fatten(state.world, prov);
 	country_name_box(state, contents, prov);
 
@@ -453,7 +474,7 @@ void partyloyalty_map_tt_box(sys::state& state, text::columnar_layout& contents,
 	}
 }
 
-void rank_map_tt_box(sys::state& state, text::columnar_layout& contents, dcon::province_id prov) {    //  Done 
+void rank_map_tt_box(sys::state& state, text::columnar_layout& contents, dcon::province_id prov) {    //  Done
 	auto fat = dcon::fatten(state.world, prov);
 	country_name_box(state, contents, prov);
 
@@ -487,7 +508,7 @@ void rank_map_tt_box(sys::state& state, text::columnar_layout& contents, dcon::p
 void migration_map_tt_box(sys::state& state, text::columnar_layout& contents, dcon::province_id prov) {   // TODO - Needs Migration Map
 	auto fat = dcon::fatten(state.world, prov);
 	auto owner = fat.get_nation_from_province_ownership();
-	
+
 	if(owner) {
 		{
 			auto box = text::open_layout_box(contents);
@@ -592,7 +613,7 @@ void migration_map_tt_box(sys::state& state, text::columnar_layout& contents, dc
 	}
 }
 
-void civilsationlevel_map_tt_box(sys::state& state, text::columnar_layout& contents, dcon::province_id prov) {    //Done 
+void civilsationlevel_map_tt_box(sys::state& state, text::columnar_layout& contents, dcon::province_id prov) {    //Done
 	auto fat = dcon::fatten(state.world, prov);
 	country_name_box(state, contents, prov);
 
@@ -654,7 +675,7 @@ void civilsationlevel_map_tt_box(sys::state& state, text::columnar_layout& conte
 	}
 }
 
-void relation_map_tt_box(sys::state& state, text::columnar_layout& contents, dcon::province_id prov) {    //Done 
+void relation_map_tt_box(sys::state& state, text::columnar_layout& contents, dcon::province_id prov) {    //Done
 	auto fat = dcon::fatten(state.world, prov);
 	country_name_box(state, contents, prov);
 
@@ -697,7 +718,7 @@ void crisis_map_tt_box(sys::state& state, text::columnar_layout& contents, dcon:
 	}
 }
 
-void naval_map_tt_box(sys::state& state, text::columnar_layout& contents, dcon::province_id prov) {   // Done 
+void naval_map_tt_box(sys::state& state, text::columnar_layout& contents, dcon::province_id prov) {   // Done
 	auto fat = dcon::fatten(state.world, prov);
 	country_name_box(state, contents, prov);
 
@@ -740,10 +761,44 @@ void naval_map_tt_box(sys::state& state, text::columnar_layout& contents, dcon::
 	}
 }
 
+void religion_map_tt_box(sys::state& state, text::columnar_layout& contents, dcon::province_id prov) { // Done
+	auto fat = dcon::fatten(state.world, prov);
+	country_name_box(state, contents, prov);
+
+	if(prov.value < state.province_definitions.first_sea_province.value) {
+		auto box = text::open_layout_box(contents);
+
+		text::localised_single_sub_box(state, contents, box, std::string_view("mtt_religion_majorities"), text::variable_type::prov, prov);
+
+		std::vector<dcon::religion_fat_id> religions;
+		for(auto pop : fat.get_pop_location()) {
+			if(std::find(religions.begin(), religions.end(), pop.get_pop().get_religion()) == religions.end()) {
+				religions.push_back(pop.get_pop().get_religion());
+			}
+		}
+		std::sort(religions.begin(), religions.end(), [&](auto a, auto b) {return fat.get_demographics(demographics::to_key(state, a.id)) > fat.get_demographics(demographics::to_key(state, b.id)); });
+		//for(size_t i = religions.size(); i > 0; i--) {
+		for(size_t i = 0; i < religions.size(); i++) {
+			text::add_line_break_to_layout_box(state, contents, box);
+			text::add_space_to_layout_box(state, contents, box);
+			text::add_to_layout_box(state, contents, box, religions[i].get_name(), text::text_color::yellow);
+			text::add_space_to_layout_box(state, contents, box);
+			text::add_to_layout_box(state, contents, box, std::string_view("("), text::text_color::white);
+			text::add_to_layout_box(state, contents, box, text::format_percentage(fat.get_demographics(demographics::to_key(state, religions[i].id)) / fat.get_demographics(demographics::total)), text::text_color::white);
+			text::add_to_layout_box(state, contents, box, std::string_view(")"), text::text_color::white);
+		}
+
+		text::close_layout_box(contents, box);
+	}
+}
+
 void populate_map_tooltip(sys::state& state, text::columnar_layout& contents, dcon::province_id prov) {
 	switch(state.map_state.active_map_mode) {
 		case map_mode::mode::terrain:
 			terrain_map_tt_box(state, contents, prov);
+			break;
+		case map_mode::mode::state_select:
+			political_map_tt_box(state, contents, prov);
 			break;
 		case map_mode::mode::political:
 			political_map_tt_box(state, contents, prov);
@@ -807,6 +862,9 @@ void populate_map_tooltip(sys::state& state, text::columnar_layout& contents, dc
 			break;
 		case map_mode::mode::naval:
 			naval_map_tt_box(state, contents, prov);
+			break;
+		case map_mode::mode::religion:
+			religion_map_tt_box(state, contents, prov);
 			break;
 		default:
 			break;

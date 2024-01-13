@@ -286,8 +286,13 @@ float get_bank_funds(sys::state& state, dcon::nation_id n);
 float get_debt(sys::state& state, dcon::nation_id n);
 float tariff_efficiency(sys::state& state, dcon::nation_id n);
 float tax_efficiency(sys::state& state, dcon::nation_id n);
+float colonial_points_from_naval_bases(sys::state& state, dcon::nation_id n);
+float colonial_points_from_ships(sys::state& state, dcon::nation_id n);
+float colonial_points_from_technology(sys::state& state, dcon::nation_id n);
+float used_colonial_points(sys::state& state, dcon::nation_id n);
 int32_t free_colonial_points(sys::state& state, dcon::nation_id n);
 int32_t max_colonial_points(sys::state& state, dcon::nation_id n);
+uint32_t get_total_pop_in_owned_provinces(sys::state& state, dcon::nation_id n);
 
 bool has_political_reform_available(sys::state& state, dcon::nation_id n);
 bool has_social_reform_available(sys::state& state, dcon::nation_id n);
@@ -336,6 +341,7 @@ void enact_reform(sys::state& state, dcon::nation_id source, dcon::reform_option
 
 void update_great_powers(sys::state& state);
 void update_influence(sys::state& state);
+void update_revanchism(sys::state& state);
 
 void monthly_flashpoint_update(sys::state& state);
 void daily_update_flashpoint_tension(sys::state& state);

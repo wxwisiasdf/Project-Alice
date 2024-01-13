@@ -917,6 +917,9 @@ public:
 
 	void button_shift_action(sys::state& state) noexcept override {
 		auto content = retrieve<dcon::technology_id>(state, parent);
+		if(!content)
+			return;
+
 		auto it = std::find(state.ui_state.tech_queue.begin(), state.ui_state.tech_queue.end(), content);
 		if(it == state.ui_state.tech_queue.end()) {
 			if(content != state.world.nation_get_current_research(state.local_player_nation) && !state.world.nation_get_active_technologies(state.local_player_nation, content)) { // don't add already researched or researching
@@ -989,6 +992,9 @@ public:
 	}
 
 	void on_update(sys::state& state) noexcept override {
+		if(!tech_id)
+			return;
+
 		if(state.world.nation_get_active_technologies(state.local_player_nation, tech_id)) {
 			// Fully researched.
 			tech_button->frame = 1;
@@ -1081,10 +1087,13 @@ public:
 		auto box = text::open_layout_box(contents, 0);
 		text::add_to_layout_box(state, contents, box, text::produce_simple_string(state, stored_text), text::text_color::yellow);
 		text::close_layout_box(contents, box);
-
+		text::add_line_break_to_layout(state, contents);
+		invention_description(state, contents, content, 0);
 		text::add_line_break_to_layout(state, contents);
 
-		invention_description(state, contents, content, 0);
+		text::add_line(state, contents, "alice_invention_chance");
+		auto mod_k = state.world.invention_get_chance(content);
+		additive_value_modifier_description(state, contents, mod_k, trigger::to_generic(state.local_player_nation), trigger::to_generic(state.local_player_nation), 0);
 	}
 };
 
@@ -1092,8 +1101,6 @@ class invention_chance_percent_text : public simple_text_element_base {
 public:
 	void on_update(sys::state& state) noexcept override {
 		if(auto content = retrieve<dcon::invention_id>(state, parent); content) {
-			
-			
 			auto mod_k = state.world.invention_get_chance(content);
 			auto chances = trigger::evaluate_additive_modifier(state, mod_k, trigger::to_generic(state.local_player_nation),
 					trigger::to_generic(state.local_player_nation), 0);
@@ -1184,11 +1191,11 @@ public:
 	void on_update(sys::state& state) noexcept override {
 		auto content = retrieve<dcon::invention_id>(state, parent);
 		frame = 0; // inactive
-		if(state.world.nation_get_active_inventions(state.local_player_nation, content)) {
+		if(content && state.world.nation_get_active_inventions(state.local_player_nation, content)) {
 			frame = 1; // This invention's been discovered
 		} else {
 			auto tech_id = retrieve<dcon::technology_id>(state, parent);
-			if(state.world.nation_get_active_technologies(state.local_player_nation, tech_id))
+			if(tech_id && state.world.nation_get_active_technologies(state.local_player_nation, tech_id))
 				frame = 2; // Active technology but not invention
 		}
 	}
@@ -1200,9 +1207,9 @@ public:
 	void update_tooltip(sys::state& state, int32_t x, int32_t y, text::columnar_layout& contents) noexcept override {
 		auto inv = retrieve<dcon::invention_id>(state, parent);
 		auto tech_id = retrieve<dcon::technology_id>(state, parent);
-		if(state.world.nation_get_active_inventions(state.local_player_nation, inv)) {
+		if(inv && state.world.nation_get_active_inventions(state.local_player_nation, inv)) {
 			text::add_line(state, contents, "invention_bulb_3");
-		} else if(state.world.nation_get_active_technologies(state.local_player_nation, tech_id)) {
+		} else if(tech_id && state.world.nation_get_active_technologies(state.local_player_nation, tech_id)) {
 			text::add_line(state, contents, "invention_bulb_2");
 		} else {
 			text::add_line(state, contents, "invention_bulb_1");
@@ -1229,25 +1236,20 @@ protected:
 
 public:
 	void on_update(sys::state& state) noexcept override {
-		if(parent) {
-			Cyto::Any payload = dcon::technology_id{};
-			parent->impl_get(state, payload);
-			auto content = any_cast<dcon::technology_id>(payload);
-
-			row_contents.clear();
-			state.world.for_each_invention([&](dcon::invention_id id) {
-				auto lim_trigger_k = state.world.invention_get_limit(id);
-				bool activable_by_this_tech = false;
-				trigger::recurse_over_triggers(state.trigger_data.data() + state.trigger_data_indices[lim_trigger_k.index() + 1],
-						[&](uint16_t* tval) {
-							if((tval[0] & trigger::code_mask) == trigger::technology && trigger::payload(tval[1]).tech_id == content)
-								activable_by_this_tech = true;
-						});
-				if(activable_by_this_tech)
-					row_contents.push_back(id);
-			});
-			update(state);
-		}
+		auto content = retrieve<dcon::technology_id>(state, parent);
+		row_contents.clear();
+		state.world.for_each_invention([&](dcon::invention_id id) {
+			auto lim_trigger_k = state.world.invention_get_limit(id);
+			bool activable_by_this_tech = false;
+			trigger::recurse_over_triggers(state.trigger_data.data() + state.trigger_data_indices[lim_trigger_k.index() + 1],
+					[&](uint16_t* tval) {
+						if((tval[0] & trigger::code_mask) == trigger::technology && trigger::payload(tval[1]).tech_id == content)
+							activable_by_this_tech = true;
+					});
+			if(activable_by_this_tech)
+				row_contents.push_back(id);
+		});
+		update(state);
 	}
 };
 
@@ -1352,22 +1354,16 @@ public:
 		base_data.size.y -= 24;
 		base_data.size.x -= 10;
 		scrollable_text::on_create(state);
-		
 	}
 
 	void on_update(sys::state& state) noexcept override {
-		if(parent) {
-			Cyto::Any payload = dcon::technology_id{};
-			parent->impl_get(state, payload);
-			auto content = any_cast<dcon::technology_id>(payload);
-
-			auto layout = text::create_endless_layout(delegate->internal_layout,
-					text::layout_parameters{0, 0, int16_t(base_data.size.x), int16_t(base_data.size.y),
-				base_data.data.text.font_handle, 0, text::alignment::left,
-				text::is_black_from_font_id(base_data.data.text.font_handle) ? text::text_color::black : text::text_color::white, false});
-			technology_description(state, layout, content);
-			calibrate_scrollbar(state);
-		}
+		auto content = retrieve<dcon::technology_id>(state, parent);
+		auto layout = text::create_endless_layout(delegate->internal_layout,
+				text::layout_parameters{0, 0, int16_t(base_data.size.x), int16_t(base_data.size.y),
+			base_data.data.text.font_handle, 0, text::alignment::left,
+			text::is_black_from_font_id(base_data.data.text.font_handle) ? text::text_color::black : text::text_color::white, false});
+		technology_description(state, layout, content);
+		calibrate_scrollbar(state);
 	}
 
 	message_result test_mouse(sys::state& state, int32_t x, int32_t y, mouse_probe_type type) noexcept override {
@@ -1399,10 +1395,12 @@ public:
 			return make_element_by_type<technology_selected_effect_text>(state, id);
 		} else if(name == "diff_icon") {
 			return make_element_by_type<image_element_base>(state, id);
+		} else if(name == "diff_label") {
+			return make_element_by_type<simple_body_text>(state, id);
 		} else if(name == "diff") {
 			return make_element_by_type<technology_research_points_text>(state, id);
 		} else if(name == "year_label") {
-			return make_element_by_type<simple_text_element_base>(state, id);
+			return make_element_by_type<simple_body_text>(state, id);
 		} else if(name == "year") {
 			return make_element_by_type<technology_year_text>(state, id);
 		} else if(name == "start") {
@@ -1496,6 +1494,33 @@ public:
 
 	void button_action(sys::state& state) noexcept override {
 		send(state, parent, element_selection_wrapper<invention_sort_type>{invention_sort_type::chance});
+	}
+};
+
+class tech_window_tech_school : public simple_body_text {
+public:
+	void on_update(sys::state& state) noexcept override {
+		auto n = retrieve<dcon::nation_id>(state, parent);
+		auto mod_id = state.world.nation_get_tech_school(n);
+		if(bool(mod_id)) {
+			set_text(state, text::produce_simple_string(state, state.world.modifier_get_name(mod_id)));
+		} else {
+			set_text(state, text::produce_simple_string(state, "traditional_academic"));
+		}
+	}
+	tooltip_behavior has_tooltip(sys::state& state) noexcept override {
+		return tooltip_behavior::variable_tooltip;
+	}
+
+	void update_tooltip(sys::state& state, int32_t x, int32_t y, text::columnar_layout& contents) noexcept override {
+		auto mod_id = state.world.nation_get_tech_school(retrieve<dcon::nation_id>(state, parent));
+		if(bool(mod_id)) {
+			auto box = text::open_layout_box(contents, 0);
+			text::add_to_layout_box(state, contents, box, state.world.modifier_get_name(mod_id), text::text_color::yellow);
+			text::close_layout_box(contents, box);
+
+			modifier_description(state, contents, mod_id);
+		}
 	}
 };
 
@@ -1599,8 +1624,12 @@ public:
 	std::unique_ptr<element_base> make_child(sys::state& state, std::string_view name, dcon::gui_def_id id) noexcept override {
 		if(name == "close_button") {
 			return make_element_by_type<generic_close_button>(state, id);
+		} else if(name == "administration") {
+			return make_element_by_type<simple_body_text>(state, id);
+		} else if(name == "current_research") {
+			return make_element_by_type<simple_body_text>(state, id);
 		} else if(name == "administration_type") {
-			return make_element_by_type<national_tech_school>(state, id);
+			return make_element_by_type<tech_window_tech_school>(state, id);
 		} else if(name == "research_progress") {
 			return make_element_by_type<nation_technology_research_progress>(state, id);
 		} else if(name == "research_progress_name") {

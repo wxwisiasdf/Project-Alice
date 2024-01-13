@@ -11,7 +11,7 @@
 
 namespace ui {
 
-inline constexpr float big_counter_cutoff = 12.0f;
+inline constexpr float big_counter_cutoff = 15.0f;
 inline constexpr float prov_details_cutoff = 18.0f;
 
 struct toggle_unit_grid {
@@ -158,8 +158,8 @@ public:
 		auto& border = state.map_state.map_data.borders[id];
 		auto& vertex = state.map_state.map_data.border_vertices[border.start_index + border.count / 2];
 
-		map_x = vertex.position_.x;
-		map_y = vertex.position_.y;
+		map_x = vertex.position.x;
+		map_y = vertex.position.y;
 	}
 
 	void on_update(sys::state& state) noexcept override {
@@ -276,8 +276,10 @@ public:
 					if(n.get_navy().get_controller_from_navy_control() == state.local_player_nation) {
 						state.select(n.get_navy().id);
 						// Hide province window when navy is clicked.
-						if(state.ui_state.province_window)
+						if(state.ui_state.province_window) {
 							state.ui_state.province_window->set_visible(state, false);
+							state.map_state.set_selected_province(dcon::province_id{});
+						}
 					}
 				}
 
@@ -308,6 +310,8 @@ struct top_display_parameters {
 	float battle_progress = 0.0f;
 	dcon::nation_id top_left_nation;
 	dcon::nation_id top_right_nation;
+	dcon::rebel_faction_id top_left_rebel;
+	dcon::rebel_faction_id top_right_rebel;
 	int8_t top_left_status = 0;
 	int8_t top_dig_in = -1;
 	int8_t top_right_dig_in = -1;
@@ -317,6 +321,10 @@ struct top_display_parameters {
 	int8_t common_unit_2 = -1;
 	std::array<outline_color, 5> colors;
 	bool is_army = false;
+	float attacker_casualties = 0.0f;
+	float defender_casualties = 0.0f;
+	bool player_involved_battle = false;
+	bool player_is_attacker = false;
 };
 
 class prov_map_siege_bar : public progress_bar {
@@ -411,6 +419,79 @@ public:
 	}
  };
 
+class tl_attacker_casualties : public color_text_element {
+public:
+	void on_update(sys::state& state) noexcept override {
+		top_display_parameters* params = retrieve<top_display_parameters*>(state, parent);
+		color = text::text_color::red;
+
+		auto cas = params->attacker_casualties * state.defines.pop_size_per_regiment;
+		cas = floor(cas);
+
+		if(cas < 5) {
+			set_text(state, "");
+		} else {
+			set_text(state, '-' + std::to_string(int32_t(cas)));
+		}
+		
+	}
+ 	void render(sys::state& state, int32_t x, int32_t y) noexcept override {
+		top_display_parameters* params = retrieve<top_display_parameters*>(state, parent);
+		auto player_involved_battle = params->player_involved_battle;
+		auto player_is_attacker = params->player_is_attacker;
+
+		if(state.map_state.get_zoom() >= big_counter_cutoff) {
+			if(player_involved_battle && player_is_attacker) {
+				color_text_element::render(state, x - 14, y - 80);
+			} else if (player_involved_battle && !player_is_attacker) {
+				color_text_element::render(state, x + 55, y - 80);
+			}
+		} else {
+			if(player_involved_battle && player_is_attacker) {
+				color_text_element::render(state, x - 14, y - 38);
+			} else if(player_involved_battle && !player_is_attacker) {
+				color_text_element::render(state, x + 55, y - 38);
+			}
+		}
+		
+	}
+};
+
+class tl_defender_casualties : public color_text_element {
+public:
+	void on_update(sys::state& state) noexcept override {
+		top_display_parameters* params = retrieve<top_display_parameters*>(state, parent);
+		color = text::text_color::red;
+
+		auto cas = params->defender_casualties * state.defines.pop_size_per_regiment;
+		cas = floor(cas);
+
+		if (cas < 5) {
+			set_text(state, "");
+		} else {
+			set_text(state, '-' + std::to_string(int32_t(cas)));
+		}
+
+	}
+	void render(sys::state& state, int32_t x, int32_t y) noexcept override {
+		top_display_parameters* params = retrieve<top_display_parameters*>(state, parent);
+		auto player_involved_battle = params->player_involved_battle;
+		auto player_is_attacker = params->player_is_attacker;
+
+		if(state.map_state.get_zoom() >= big_counter_cutoff) {
+			if (player_involved_battle && player_is_attacker)
+				color_text_element::render(state, x + 55, y - 80);
+			else if (player_involved_battle && !player_is_attacker)
+				color_text_element::render(state, x - 14, y - 80);
+		} else {
+			if (player_involved_battle && player_is_attacker)
+				color_text_element::render(state, x + 55, y - 38);
+			else if (player_involved_battle && !player_is_attacker)
+				color_text_element::render(state, x - 14, y - 38);
+		}
+	}
+};
+
 class map_battle : public window_element_base {
 public:
 	std::unique_ptr<element_base> make_child(sys::state& state, std::string_view name, dcon::gui_def_id id) noexcept override {
@@ -418,6 +499,10 @@ public:
 			return make_element_by_type<prov_map_battle_bar>(state, id);
 		} else if(name == "overlay_right") {
 			return make_element_by_type<prov_map_br_overlay>(state, id);
+		} else if(name == "defender_casualties") {
+			return make_element_by_type <tl_defender_casualties>(state, id);
+		} else if(name == "attacker_casualties") {
+			return make_element_by_type <tl_attacker_casualties>(state, id);
 		} else {
 			return nullptr;
 		}
@@ -466,6 +551,9 @@ public:
 	void on_update(sys::state& state) noexcept override {
 		top_display_parameters* params = retrieve<top_display_parameters*>(state, parent);
 		progress = params->top_right_org_value;
+	}
+	message_result test_mouse(sys::state& state, int32_t x, int32_t y, mouse_probe_type type) noexcept override {
+		return message_result::unseen;
 	}
 };
 
@@ -520,13 +608,25 @@ public:
 	}
 };
 
-class tr_controller_flag : public flag_button {
+class tr_controller_flag : public flag_button2 {
 public:
-	dcon::national_identity_id get_current_nation(sys::state& state) noexcept override {
-		top_display_parameters* params = retrieve<top_display_parameters*>(state, parent);
-		if(params)
-			return state.world.nation_get_identity_from_identity_holder(params->top_right_nation);
-		return dcon::national_identity_id{};
+	message_result get(sys::state& state, Cyto::Any& payload) noexcept override {
+		if(payload.holds_type<dcon::nation_id>()) {
+			top_display_parameters* params = retrieve<top_display_parameters*>(state, parent);
+			if(params)
+				payload.emplace<dcon::nation_id>(params->top_right_nation);
+			else 
+				payload.emplace<dcon::nation_id>(dcon::nation_id{});
+			return message_result::consumed;
+		} else if(payload.holds_type<dcon::rebel_faction_id>()) {
+			top_display_parameters* params = retrieve<top_display_parameters*>(state, parent);
+			if(params)
+				payload.emplace<dcon::rebel_faction_id>(params->top_right_rebel);
+			else
+				payload.emplace<dcon::rebel_faction_id>(dcon::rebel_faction_id{});
+			return message_result::consumed;
+		}
+		return message_result::unseen;
 	}
 };
 
@@ -651,6 +751,9 @@ public:
 		top_display_parameters* params = retrieve<top_display_parameters*>(state, parent);
 		progress = params->top_left_org_value;
 	}
+	message_result test_mouse(sys::state& state, int32_t x, int32_t y, mouse_probe_type type) noexcept override {
+		return message_result::unseen;
+	}
 };
 
 class tl_status : public image_element_base {
@@ -747,30 +850,45 @@ public:
 	}
 };
 
-class tl_controller_flag : public flag_button {
+
+
+class tl_controller_flag : public flag_button2 {
 public:
 	bool visible = true;
 
-	dcon::national_identity_id get_current_nation(sys::state& state) noexcept override {
-		top_display_parameters* params = retrieve<top_display_parameters*>(state, parent);
-		if(params)
-			return state.world.nation_get_identity_from_identity_holder(params->top_left_nation);
-		return dcon::national_identity_id{};
+	message_result get(sys::state& state, Cyto::Any& payload) noexcept override {
+		if(payload.holds_type<dcon::nation_id>()) {
+			top_display_parameters* params = retrieve<top_display_parameters*>(state, parent);
+			if(params)
+				payload.emplace<dcon::nation_id>(params->top_left_nation);
+			else
+				payload.emplace<dcon::nation_id>(dcon::nation_id{});
+			return message_result::consumed;
+		} else if(payload.holds_type<dcon::rebel_faction_id>()) {
+			top_display_parameters* params = retrieve<top_display_parameters*>(state, parent);
+			if(params)
+				payload.emplace<dcon::rebel_faction_id>(params->top_left_rebel);
+			else
+				payload.emplace<dcon::rebel_faction_id>(dcon::rebel_faction_id{});
+			return message_result::consumed;
+		}
+		return message_result::unseen;
 	}
+
 	void on_update(sys::state& state) noexcept override {
 		top_display_parameters* params = retrieve<top_display_parameters*>(state, parent);
 
 		visible =  params->top_left_nation != state.local_player_nation;
 		if(visible)
-			flag_button::on_update(state);
+			flag_button2::on_update(state);
 	}
 	void render(sys::state& state, int32_t x, int32_t y) noexcept override {
 		if(visible)
-			flag_button::render(state, x, y);
+			flag_button2::render(state, x, y);
 	}
 	mouse_probe impl_probe_mouse(sys::state& state, int32_t x, int32_t y, mouse_probe_type type) noexcept override {
 		if(visible)
-			return flag_button::impl_probe_mouse(state, x, y, type);
+			return flag_button2::impl_probe_mouse(state, x, y, type);
 		else
 			return mouse_probe{ nullptr, ui::xy_pair{} };
 	}
@@ -984,12 +1102,14 @@ public:
 		dcon::naval_battle_id nbattle;
 		for(auto b : state.world.province_get_land_battle_location(prov)) {
 			auto w = b.get_battle().get_war_from_land_battle_in_war();
-			if(!w) {
+			if(!w) { //rebels
 				player_involved_battle = true;
 				lbattle = b.get_battle();
+				display.player_involved_battle = true;
 				break;
-			} else if(military::get_role(state, w, state.local_player_nation) != military::war_role::none) {
+			} else if(military::get_role(state, w, state.local_player_nation) != military::war_role::none) { //in a war
 				player_involved_battle = true;
+				display.player_involved_battle = true;
 				lbattle = b.get_battle();
 				break;
 			}
@@ -1048,6 +1168,10 @@ public:
 		display.top_right_org_value = 0.0f;
 		display.is_army = false;
 
+		display.attacker_casualties = 0.0f;
+		display.defender_casualties = 0.0f;
+		display.player_is_attacker = false;
+
 
 		if(lbattle) {
 			display.is_army = true;
@@ -1059,13 +1183,24 @@ public:
 			auto w = state.world.land_battle_get_war_from_land_battle_in_war(lbattle);
 			bool player_is_attacker = w ? military::is_attacker(state, w, state.local_player_nation) : false;
 
+			bool land_battle_attacker_is_player = false;
+			if (player_is_attacker && state.world.land_battle_get_war_attacker_is_attacker(lbattle))
+				land_battle_attacker_is_player = true;
+			else if (!player_is_attacker && !state.world.land_battle_get_war_attacker_is_attacker(lbattle))
+				land_battle_attacker_is_player = true;
+
+			display.player_is_attacker = land_battle_attacker_is_player;
+
 			display.top_left_status = 6;
+
+ 			display.attacker_casualties = state.world.land_battle_get_attacker_casualties(lbattle);
+			display.defender_casualties = state.world.land_battle_get_defender_casualties(lbattle);
 
 			for(auto ar : state.world.land_battle_get_army_battle_participation(lbattle)) {
 				auto controller = ar.get_army().get_controller_from_army_control();
+
 				if(!controller || military::is_attacker(state, w, controller) != player_is_attacker) { // opposed
 					++display.right_frames;
-
 					float str = 0.0f;
 					for(auto m : state.world.army_get_army_membership(ar.get_army())) {
 						++total_opp_count;
@@ -1085,6 +1220,7 @@ public:
 					if(str > max_opp_str) {
 						max_opp_str = str;
 						display.top_right_nation = controller;
+						display.top_right_rebel = ar.get_army().get_controller_from_army_rebel_control();
 					}
 				} else { // same side
 					float str = 0.0f;
@@ -1111,6 +1247,7 @@ public:
 					if(str > max_str) {
 						max_str = str;
 						display.top_left_nation = controller;
+						display.top_left_rebel = dcon::rebel_faction_id{};
 					}
 				}
 			}
@@ -1189,6 +1326,7 @@ public:
 					if(str > max_opp_str) {
 						max_opp_str = str;
 						display.top_right_nation = controller;
+						display.top_right_rebel = dcon::rebel_faction_id{};
 					}
 				} else { // same side
 					float str = 0.0f;
@@ -1208,6 +1346,7 @@ public:
 					if(str > max_str) {
 						max_str = str;
 						display.top_left_nation = controller;
+						display.top_left_rebel = dcon::rebel_faction_id{};
 					}
 				}
 			}
@@ -1254,9 +1393,11 @@ public:
 
 			if(display.colors[0] == outline_color::gold) {
 				display.top_left_nation = state.local_player_nation;
+				display.top_left_rebel = dcon::rebel_faction_id{};
 				filter = [&](dcon::army_id a) { return state.world.army_get_controller_from_army_control(a) == state.local_player_nation && state.is_selected(a); };
 			} else if(display.colors[0] == outline_color::blue) {
 				display.top_left_nation = state.local_player_nation;
+				display.top_left_rebel = dcon::rebel_faction_id{};
 				filter = [&](dcon::army_id a) { return state.world.army_get_controller_from_army_control(a) == state.local_player_nation && !state.is_selected(a); };
 			} else if(display.colors[0] == outline_color::cyan) {
 				filter = [&](dcon::army_id a) {
@@ -1317,6 +1458,7 @@ public:
 					if(str > max_str) {
 						max_str = str;
 						display.top_left_nation = state.world.army_get_controller_from_army_control(a.get_army());
+						display.top_left_rebel = state.world.army_get_controller_from_army_rebel_control(a.get_army());
 					}
 				}
 			}
@@ -1334,9 +1476,9 @@ public:
 			top_right_icon->set_visible(state, false);
 			small_top_icon->base_data.position.x = -30;
 			small_top_right_icon->set_visible(state, false);
-		}
-		else {
+		} else {
 			std::function<bool(dcon::navy_id)> filter;
+			display.top_left_rebel = dcon::rebel_faction_id{};
 
 			if(display.colors[0] == outline_color::gold) {
 				display.top_left_nation = state.local_player_nation;
@@ -1495,8 +1637,10 @@ public:
 						if(state.world.navy_get_controller_from_navy_control(n.get_navy()) == state.local_player_nation) {
 							state.select(n.get_navy().id);
 							// Hide province window when navy is clicked.
-							if(state.ui_state.province_window)
+							if(state.ui_state.province_window) {
 								state.ui_state.province_window->set_visible(state, false);
+								state.map_state.set_selected_province(dcon::province_id{});
+							}
 						}
 					}
 				} else {
@@ -1504,8 +1648,10 @@ public:
 						if(!(n.get_army().get_navy_from_army_transport()) && n.get_army().get_controller_from_army_control() == state.local_player_nation) {
 							state.select(n.get_army().id);
 							// Hide province window when army is clicked.
-							if(state.ui_state.province_window)
+							if(state.ui_state.province_window) {
 								state.ui_state.province_window->set_visible(state, false);
+								state.map_state.set_selected_province(dcon::province_id{});
+							}
 						}
 					}
 				}

@@ -28,7 +28,6 @@ struct command_info {
 		unwesternize,
 		elecwin,
 		mainmenu,
-		debug,
 		cb_progress,
 		crisis,
 		end_game,
@@ -45,7 +44,15 @@ struct command_info {
 		always_accept_deals,
 		complete_constructions,
 		instant_research,
-		game_info
+		game_info,
+		spectate,
+		conquer_tag,
+		change_owner,
+		change_control,
+		change_control_and_owner,
+		province_id_tooltip,
+		next_song,
+		add_population,
 	} mode = type::none;
 	std::string_view desc;
 	struct argument_info {
@@ -113,9 +120,6 @@ inline constexpr command_info possible_commands[] = {
 		command_info{"mainmenu", command_info::type::mainmenu, "Shows/Hides Main Menu",
 				{command_info::argument_info{}, command_info::argument_info{}, command_info::argument_info{},
 						command_info::argument_info{}}},
-		command_info{"dbg", command_info::type::debug, "Toggles Debug mode",
-				{command_info::argument_info{}, command_info::argument_info{}, command_info::argument_info{},
-						command_info::argument_info{}}},
 		command_info{"colour", command_info::type::colour_guide, "An overview of available colors for complex text",
 				{command_info::argument_info{}, command_info::argument_info{}, command_info::argument_info{},
 						command_info::argument_info{}}},
@@ -148,9 +152,10 @@ inline constexpr command_info possible_commands[] = {
 		command_info{"tai", command_info::type::toggle_ai, "Toggles ON/OFF AI for countries",
 				{command_info::argument_info{}, command_info::argument_info{},
 						command_info::argument_info{}, command_info::argument_info{}}},
-		command_info{"aw", command_info::type::always_allow_wargoals, "Always allow adding wargoals",
+		/* doesn't work, removed until someone fixes it
+		command_info{ "aw", command_info::type::always_allow_wargoals, "Always allow adding wargoals",
 				{command_info::argument_info{}, command_info::argument_info{},
-						command_info::argument_info{}, command_info::argument_info{}}},
+						command_info::argument_info{}, command_info::argument_info{}}}, */
 		command_info{"ar", command_info::type::always_allow_reforms, "Always allow enacting reforms",
 				{command_info::argument_info{}, command_info::argument_info{},
 						command_info::argument_info{}, command_info::argument_info{}}},
@@ -166,6 +171,31 @@ inline constexpr command_info possible_commands[] = {
 		command_info{"gi", command_info::type::game_info, "Shows general game information",
 				{command_info::argument_info{}, command_info::argument_info{},
 						command_info::argument_info{}, command_info::argument_info{}}},
+		command_info{ "spectate", command_info::type::spectate, "Become spectator nation",
+				{command_info::argument_info{}, command_info::argument_info{},
+						command_info::argument_info{}, command_info::argument_info{}} },
+		command_info{ "conquer", command_info::type::conquer_tag, "Annexes an entire nation (use 'all' for the entire world)",
+				{command_info::argument_info{"tag", command_info::argument_info::type::tag, false}, command_info::argument_info{},
+						command_info::argument_info{}, command_info::argument_info{}} },
+		command_info{ "chow", command_info::type::change_owner, "Change province owner to country",
+				{command_info::argument_info{"province", command_info::argument_info::type::numeric, false}, command_info::argument_info{"country", command_info::argument_info::type::tag, true},
+						command_info::argument_info{}, command_info::argument_info{}} },
+		command_info{ "chcon", command_info::type::change_control, "Give province control to country",
+				{command_info::argument_info{"province", command_info::argument_info::type::numeric, false}, command_info::argument_info{"country", command_info::argument_info::type::tag, true},
+						command_info::argument_info{}, command_info::argument_info{}} },
+		command_info{ "chcow", command_info::type::change_control_and_owner, "Give province to country",
+				{command_info::argument_info{"province", command_info::argument_info::type::numeric, false}, command_info::argument_info{"country", command_info::argument_info::type::tag, true},
+						command_info::argument_info{}, command_info::argument_info{}} },
+		command_info{ "provid", command_info::type::province_id_tooltip, "show province id in mouse tooltip",
+				{command_info::argument_info{}, command_info::argument_info{},
+						command_info::argument_info{}, command_info::argument_info{}} },
+		command_info{ "nextsong", command_info::type::next_song, "Skips to the next track",
+				{command_info::argument_info{}, command_info::argument_info{},
+						command_info::argument_info{}, command_info::argument_info{}} },
+		command_info{ "addpop", command_info::type::add_population, "Add a certain ammount of population to your nation",
+				{command_info::argument_info{"ammount", command_info::argument_info::type::numeric, false }, command_info::argument_info{ },
+						command_info::argument_info{}, command_info::argument_info{}} },
+						
 };
 
 uint32_t levenshtein_distance(std::string_view s1, std::string_view s2) {
@@ -291,8 +321,13 @@ parser_state parse_command(sys::state& state, std::string_view text) {
 	// Parse command
 	parser_state pstate{};
 	pstate.cmd = possible_commands[0];
+	size_t first_space = 0;
+	for(size_t i = 0; i < s.size(); ++i) {
+		if(isspace(s.at(i))) break;
+		first_space = i;
+	}
 	for(auto const& cmd : possible_commands)
-		if(s.starts_with(cmd.name)) {
+		if(s.compare(0, first_space + 1, cmd.name) == 0) {
 			pstate.cmd = cmd;
 			break;
 		}
@@ -425,16 +460,24 @@ void ui::console_edit::edit_box_update(sys::state& state, std::string_view s) no
 					}
 				}
 			});
-			// Now type in a suggestion...
-			dcon::nation_id nid =
-				state.world.identity_holder_get_nation(state.world.national_identity_get_identity_holder(closest_match.second));
-			std::string name = nations::int_to_tag(state.world.national_identity_get_identifying_int(closest_match.second));
-			if(tag.size() >= name.size()) {
-				lhs_suggestion = std::string{};
+			if(closest_match.second) {
+				// Now type in a suggestion...
+				dcon::nation_id nid = state.world.identity_holder_get_nation(state.world.national_identity_get_identity_holder(closest_match.second));
+				std::string name = nations::int_to_tag(state.world.national_identity_get_identifying_int(closest_match.second));
+				if(tag.size() >= name.size()) {
+					lhs_suggestion = std::string{};
+				} else {
+					lhs_suggestion = name.substr(tag.size());
+				}
+				rhs_suggestion = text::produce_simple_string(state, state.world.nation_get_name(nid)) + " - " + name;
 			} else {
-				lhs_suggestion = name.substr(tag.size());
+				lhs_suggestion = std::string{};
+				rhs_suggestion = std::string{};
+				if(tag.size() == 1)
+					rhs_suggestion = tag + "?? - ???";
+				else if(tag.size() == 2)
+					rhs_suggestion = tag + "? - ???";
 			}
-			rhs_suggestion = text::produce_simple_string(state, state.world.nation_get_name(nid)) + " - " + name;
 		}
 	}
 }
@@ -520,9 +563,13 @@ void ui::console_edit::edit_box_enter(sys::state& state, std::string_view s) noe
 	}
 	switch(pstate.cmd.mode) {
 	case command_info::type::mainmenu:
-		state.ui_state.main_menu_win->is_visible() ? state.ui_state.main_menu_win->set_visible(state, false)
-			: state.ui_state.main_menu_win->set_visible(state, true);
-		state.ui_state.main_menu_win->impl_on_update(state);
+		if(!state.ui_state.main_menu) {
+			show_main_menu(state);
+		} else {
+			state.ui_state.main_menu->is_visible() ? state.ui_state.main_menu->set_visible(state, false)
+				: state.ui_state.main_menu->set_visible(state, true);
+			state.ui_state.main_menu->impl_on_update(state);
+		}
 		break;
 	case command_info::type::elecwin:
 		state.ui_state.election_window->is_visible() ? state.ui_state.election_window->set_visible(state, false)
@@ -1147,7 +1194,6 @@ void ui::console_edit::edit_box_enter(sys::state& state, std::string_view s) noe
 	case command_info::type::toggle_ai:
 		for(auto n : state.world.in_nation)
 			command::c_toggle_ai(state, state.local_player_nation, n);
-		state.world.nation_set_is_player_controlled(state.local_player_nation, true);
 		break;
 	case command_info::type::always_allow_wargoals:
 		state.cheat_data.always_allow_wargoals = !state.cheat_data.always_allow_wargoals;
@@ -1159,7 +1205,7 @@ void ui::console_edit::edit_box_enter(sys::state& state, std::string_view s) noe
 		command::c_complete_constructions(state, state.local_player_nation);
 		break;
 	case command_info::type::instant_research:
-		command::c_change_research_points(state, state.local_player_nation, float(640000000.f));
+		command::c_instant_research(state, state.local_player_nation);
 		break;
 	case command_info::type::always_accept_deals:
 		state.cheat_data.always_accept_deals = !state.cheat_data.always_accept_deals;
@@ -1169,6 +1215,77 @@ void ui::console_edit::edit_box_enter(sys::state& state, std::string_view s) noe
 		log_to_console(state, parent, std::string("Great Wars: ") + (state.military_definitions.great_wars_enabled ? "\x02" : "\x01"));
 		log_to_console(state, parent, std::string("World Wars: ") + (state.military_definitions.world_wars_enabled ? "\x02" : "\x01"));
 		break;
+	case command_info::type::spectate:
+		command::c_switch_nation(state, state.local_player_nation, state.world.nation_get_identity_from_identity_holder(state.national_definitions.rebel_id));
+		break;
+	case command_info::type::conquer_tag:
+	{
+		auto tag = std::get<std::string>(pstate.arg_slots[0]);
+		if(tag == "ALL") {
+			for(const auto po : state.world.in_province_ownership) {
+				command::c_change_owner(state, state.local_player_nation, po.get_province(), state.local_player_nation);
+			}
+		} else {
+			auto nid = smart_get_national_identity_from_tag(state, parent, tag);
+			if(nid) {
+				auto n = state.world.national_identity_get_nation_from_identity_holder(nid);
+				for(const auto po : state.world.in_province_ownership) {
+					if(po.get_nation() == n)
+						command::c_change_owner(state, state.local_player_nation, po.get_province(), state.local_player_nation);
+				}
+			}
+		}
+		break;
+	}
+	case command_info::type::change_control_and_owner:
+	{
+		auto province_id = dcon::province_id((uint16_t)std::get<std::int32_t>(pstate.arg_slots[0]));
+		auto nid = state.world.nation_get_identity_from_identity_holder(state.local_player_nation);
+		if(std::holds_alternative<std::string>(pstate.arg_slots[1])) {
+			auto tag = std::get<std::string>(pstate.arg_slots[1]);
+			nid = smart_get_national_identity_from_tag(state, parent, tag);
+		}
+		command::c_change_owner(state, state.local_player_nation, province_id, state.world.national_identity_get_nation_from_identity_holder(nid));
+		break;
+	}
+	case command_info::type::change_owner:
+	{
+		auto province_id = dcon::province_id((uint16_t)std::get<std::int32_t>(pstate.arg_slots[0]));
+		auto nid = state.world.nation_get_identity_from_identity_holder(state.local_player_nation);
+		if(std::holds_alternative<std::string>(pstate.arg_slots[1])) {
+			auto tag = std::get<std::string>(pstate.arg_slots[1]);
+			nid = smart_get_national_identity_from_tag(state, parent, tag);
+		}
+		command::c_change_owner(state, state.local_player_nation, province_id, state.world.national_identity_get_nation_from_identity_holder(nid));
+		break;
+	}
+	case command_info::type::change_control:
+	{
+		auto province_id = dcon::province_id((uint16_t)std::get<std::int32_t>(pstate.arg_slots[0]));
+		auto nid = state.world.nation_get_identity_from_identity_holder(state.local_player_nation);
+		if(std::holds_alternative<std::string>(pstate.arg_slots[1])) {
+			auto tag = std::get<std::string>(pstate.arg_slots[1]);
+			nid = smart_get_national_identity_from_tag(state, parent, tag);
+		}
+		command::c_change_controller(state, state.local_player_nation, province_id, state.world.national_identity_get_nation_from_identity_holder(nid));
+		break;
+	}
+	case command_info::type::province_id_tooltip:
+	{
+		state.cheat_data.show_province_id_tooltip = not state.cheat_data.show_province_id_tooltip;
+		break;
+	}
+	case command_info::type::next_song:
+	{
+		sound::play_new_track(state);
+		break;
+	}
+	case command_info::type::add_population:
+	{
+		auto ammount = std::get<std::int32_t>(pstate.arg_slots[0]);
+		command::c_add_population(state, state.local_player_nation, ammount);
+		break;
+	}
 	case command_info::type::none:
 		log_to_console(state, parent, "Command \"" + std::string(s) + "\" not found.");
 		break;

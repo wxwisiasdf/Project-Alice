@@ -129,25 +129,32 @@ public:
 	void update_tooltip(sys::state& state, int32_t x, int32_t y, text::columnar_layout& contents) noexcept override {
 		auto nation_id = retrieve<dcon::nation_id>(state, parent);
 
-		float points = 0.f;
-		state.world.for_each_technology([&](dcon::technology_id t) {
-			if(state.world.nation_get_active_technologies(nation_id, t))
-				points += float(state.world.technology_get_colonial_points(t));
-		});
-
 		text::substitution_map sub;
 		std::string value;
 		value = text::prettify(nations::free_colonial_points(state, nation_id));
 		text::add_to_substitution_map(sub, text::variable_type::value, std::string_view(value));
 		auto box = text::open_layout_box(contents, 0);
 		text::localised_format_box(state, contents, box, std::string_view("colonial_points"), sub);
+		text::add_line_break_to_layout_box(state, contents, box);
+		text::localised_format_box(state, contents, box, std::string_view("explain_colonial_points"), sub);
 		text::add_divider_to_layout_box(state, contents, box);
 		text::localised_format_box(state, contents, box, std::string_view("available_colonial_power"), sub);
 		text::add_line_break_to_layout_box(state, contents, box);
-		text::localised_format_box(state, contents, box, std::string_view("from_technology"), sub);
+		text::localised_format_box(state, contents, box, std::string_view("colonial_points_from_technology"), sub);
 		text::add_space_to_layout_box(state, contents, box);
-		text::add_to_layout_box(state, contents, box, text::format_float(points, 0), text::text_color::green);
-
+		text::add_to_layout_box(state, contents, box, text::format_float(nations::colonial_points_from_technology(state, nation_id), 0), text::text_color::green);
+		text::add_line_break_to_layout_box(state, contents, box);
+		text::localised_format_box(state, contents, box, std::string_view("colonial_points_from_naval_bases"), sub);
+		text::add_space_to_layout_box(state, contents, box);
+		text::add_to_layout_box(state, contents, box, text::format_float(nations::colonial_points_from_naval_bases(state, nation_id), 0), text::text_color::green);
+		text::add_line_break_to_layout_box(state, contents, box);
+		text::localised_format_box(state, contents, box, std::string_view("colonial_points_from_ships"), sub);
+		text::add_space_to_layout_box(state, contents, box);
+		text::add_to_layout_box(state, contents, box, text::format_float(nations::colonial_points_from_ships(state, nation_id), 0), text::text_color::green);
+		text::add_line_break_to_layout_box(state, contents, box);
+		text::localised_format_box(state, contents, box, std::string_view("used_colonial_maintenance"), sub);
+		text::add_space_to_layout_box(state, contents, box);
+		text::add_to_layout_box(state, contents, box, text::format_float(nations::used_colonial_points(state, nation_id), 0), text::text_color::red);
 		text::close_layout_box(contents, box);
 	}
 };
@@ -200,7 +207,8 @@ public:
 		text::substitution_map sub;
 		auto literacy_change = demographics::get_estimated_literacy_change(state, nation_id);
 		text::add_to_substitution_map(sub, text::variable_type::val, text::fp_four_places{literacy_change * 30.f});
-		auto avg_literacy = text::format_percentage((state.world.nation_get_demographics(nation_id, demographics::literacy) / state.world.nation_get_demographics(nation_id, demographics::total)), 1);
+		auto total = state.world.nation_get_demographics(nation_id, demographics::total);
+		auto avg_literacy = text::format_percentage(total != 0.f ? (state.world.nation_get_demographics(nation_id, demographics::literacy) / total) : 0.f, 1);
 		text::add_to_substitution_map(sub, text::variable_type::avg, std::string_view(avg_literacy));
 		text::localised_format_box(state, contents, box, std::string_view("topbar_avg_literacy"), sub);
 		text::add_line_break_to_layout_box(state, contents, box);
@@ -208,28 +216,6 @@ public:
 		text::close_layout_box(contents, box);
 	}
 };
-
-class topbar_nation_ruling_party_text : public nation_ruling_party_text {
-public:
-	tooltip_behavior has_tooltip(sys::state& state) noexcept override {
-		return tooltip_behavior::variable_tooltip;
-	}
-
-	void update_tooltip(sys::state& state, int32_t x, int32_t y, text::columnar_layout& contents) noexcept override {
-		auto nation_id = retrieve<dcon::nation_id>(state, parent);
-		auto fat_id = dcon::fatten(state.world, nation_id);
-		std::string ruling_party = text::get_name_as_string(state, fat_id.get_ruling_party());
-		ruling_party = ruling_party + " (" +
-										text::get_name_as_string(state,
-												state.world.political_party_get_ideology(state.world.nation_get_ruling_party(nation_id))) +
-										")";
-		auto box = text::open_layout_box(contents, 0);
-		text::localised_single_sub_box(state, contents, box, std::string_view("topbar_ruling_party"), text::variable_type::curr, std::string_view(ruling_party));
-		text::add_divider_to_layout_box(state, contents, box);
-		text::close_layout_box(contents, box);
-	}
-};
-
 
 class topbar_nation_infamy_text : public expanded_hitbox_text {
 public:
@@ -352,6 +338,10 @@ public:
 		return tooltip_behavior::variable_tooltip;
 	}
 	void update_tooltip(sys::state& state, int32_t x, int32_t y, text::columnar_layout& contents) noexcept override {
+		/*
+		// SCHOMBERT: A good portion of this is wrong because it is showing maximum values for some of these expense categories
+		// rather than my scaling them to what the actual spending settings are
+		
 		auto nation_id = retrieve<dcon::nation_id>(state, parent);
 
 		text::substitution_map sub{};
@@ -368,7 +358,7 @@ public:
 		total_expense += economy::estimate_pop_payouts_by_income_type(state, nation_id, culture::income_type::education);
 		total_expense += economy::estimate_pop_payouts_by_income_type(state, nation_id, culture::income_type::administration);
 		total_expense += economy::estimate_pop_payouts_by_income_type(state, nation_id, culture::income_type::military);
-		total_expense += economy::estimate_loan_payments(state, nation_id);
+		total_expense += economy::interest_payment(state, nation_id);
 		total_expense += economy::estimate_subsidy_spending(state, nation_id);
 
 		text::add_to_substitution_map(sub, text::variable_type::yesterday,
@@ -412,7 +402,7 @@ public:
 						-economy::estimate_pop_payouts_by_income_type(state, nation_id, culture::income_type::military) }); // $VAL
 		text::add_line(state, contents, std::string_view("budget_interest"), text::variable_type::val,
 				text::fp_one_place{
-						-economy::estimate_loan_payments(state, nation_id) }); // $VAL - presumably loan payments == interest (?)
+						-economy::interest_payment(state, nation_id) }); // $VAL - presumably loan payments == interest (?)
 		text::add_line(state, contents, std::string_view("budget_imports"), text::variable_type::val,
 				text::fp_one_place{ -economy::nation_total_imports(state,
 						nation_id) }); // $VAL - presumably nation_total_imports is for national stockpile (?)
@@ -421,6 +411,8 @@ public:
 
 		text::add_line(state, contents, std::string_view("topbar_projected_income"), text::variable_type::val,
 				text::fp_two_places{ economy::estimate_daily_income(state, nation_id) });
+
+		*/
 	}
 
 };
@@ -449,8 +441,10 @@ public:
 		text::substitution_map sub1;
 		float relevant_pop = state.world.nation_get_demographics(nation_id,
 				demographics::to_key(state, state.world.nation_get_primary_culture(nation_id)));
-		for(auto ac : state.world.nation_get_accepted_cultures(nation_id)) {
-			relevant_pop += state.world.nation_get_demographics(nation_id, demographics::to_key(state, ac));
+		for(auto ac : state.world.in_culture) {
+			if(state.world.nation_get_accepted_cultures(nation_id, ac)) {
+				relevant_pop += state.world.nation_get_demographics(nation_id, demographics::to_key(state, ac));
+			}
 		}
 		text::add_to_substitution_map(sub1, text::variable_type::num, text::pretty_integer{(int64_t)relevant_pop});
 		auto fPoints = relevant_pop / state.defines.national_focus_divider; // NOTE: Occasionally inaccurate by a few 0.01, this
@@ -510,11 +504,11 @@ public:
 		auto box = text::open_layout_box(contents, 0);
 		text::substitution_map sub;
 		auto mil_change = demographics::get_estimated_mil_change(state, nation_id);
+		auto total = state.world.nation_get_demographics(nation_id, demographics::total);
 		text::add_to_substitution_map(sub, text::variable_type::avg,
-				text::fp_two_places{(state.world.nation_get_demographics(nation_id, demographics::militancy) /
-															state.world.nation_get_demographics(nation_id, demographics::total))});
+				text::fp_two_places{total != 0.f ? state.world.nation_get_demographics(nation_id, demographics::militancy) / total : 0.f});
 		text::add_to_substitution_map(sub, text::variable_type::val,
-				text::fp_four_places{mil_change * 30.f});
+				text::fp_four_places{mil_change});
 		text::localised_format_box(state, contents, box, std::string_view("topbar_avg_mil"), sub);
 		text::add_line_break_to_layout_box(state, contents, box);
 		text::localised_format_box(state, contents, box, std::string_view("topbar_avg_change"), sub);
@@ -551,10 +545,10 @@ public:
 		auto box = text::open_layout_box(contents, 0);
 		text::substitution_map sub;
 		auto con_change = demographics::get_estimated_con_change(state, nation_id);
+		auto total = state.world.nation_get_demographics(nation_id, demographics::total);
 		text::add_to_substitution_map(sub, text::variable_type::avg,
-				text::fp_two_places{(state.world.nation_get_demographics(nation_id, demographics::consciousness) /
-															state.world.nation_get_demographics(nation_id, demographics::total))});
-		text::add_to_substitution_map(sub, text::variable_type::val, text::fp_four_places{con_change * 30.f});
+				text::fp_two_places{total != 0.f ? (state.world.nation_get_demographics(nation_id, demographics::consciousness) / total) : 0.f});
+		text::add_to_substitution_map(sub, text::variable_type::val, text::fp_four_places{con_change});
 		text::localised_format_box(state, contents, box, std::string_view("topbar_avg_con"), sub);
 		text::add_line_break_to_layout_box(state, contents, box);
 		text::localised_format_box(state, contents, box, std::string_view("topbar_avg_change"), sub);
@@ -1115,7 +1109,7 @@ public:
 					text::add_to_substitution_map(sub, text::variable_type::type, state.world.pop_type_get_name(pt));
 					auto state_name = text::get_dynamic_state_name(state, state_instance);
 					text::add_to_substitution_map(sub, text::variable_type::state, std::string_view{ state_name });
-					text::add_to_substitution_map(sub, text::variable_type::perc, text::fp_percentage_one_place{ unemployed / total });
+					text::add_to_substitution_map(sub, text::variable_type::perc, text::fp_two_places{ (unemployed / total) * 100.f });
 					auto box = text::open_layout_box(contents);
 					text::localised_format_box(state, contents, box, "topbar_unemployed", sub);
 					text::close_layout_box(contents, box);
@@ -1516,8 +1510,7 @@ public:
 				if(state.world.nation_get_in_sphere_of(m) == n) {
 					[&]() {
 						for(auto fac : state.world.nation_get_rebellion_within(m)) {
-							auto control = fac.get_rebels().get_province_rebel_control();
-							if(control.begin() != control.end()) {
+							if(rebel::get_faction_brigades_active(state, fac.get_rebels()) > 0) {
 								if(!added_reb_header)
 									text::add_line(state, contents, std::string_view("a_alert_reb"));
 								added_reb_header = true;
@@ -1614,167 +1607,6 @@ public:
 	}
 };
 
-class topbar_map_legend_title : public simple_text_element_base {
-	std::string_view get_title_from_mode(map_mode::mode v) {
-		switch(v) {
-		case map_mode::mode::admin:
-			return "mapmode_8";
-		case map_mode::mode::civilization_level:
-			return "mapmode_19";
-		case map_mode::mode::colonial:
-			return "mapmode_7";
-		case map_mode::mode::crisis:
-			return "mapmode_21";
-		case map_mode::mode::migration:
-			return "mapmode_18";
-		case map_mode::mode::naval:
-			return "mapmode_22";
-		case map_mode::mode::nationality:
-			return "mapmode_13";
-		case map_mode::mode::national_focus:
-			return "mapmode_10";
-		case map_mode::mode::party_loyalty:
-			return "mapmode_16";
-		case map_mode::mode::political:
-			return "mapmode_2";
-		case map_mode::mode::population:
-			return "mapmode_12";
-		case map_mode::mode::rank:
-			return "mapmode_17";
-		case map_mode::mode::recruitment:
-			return "mapmode_9";
-		case map_mode::mode::region:
-			return "mapmode_5";
-		case map_mode::mode::relation:
-			return "mapmode_20";
-		case map_mode::mode::revolt:
-			return "mapmode_3";
-		case map_mode::mode::rgo_output:
-			return "mapmode_11";
-		case map_mode::mode::supply:
-			return "mapmode_15";
-		case map_mode::mode::terrain:
-			return "mapmode_1";
-		default:
-			return "???";
-		}
-	}
-public:
-	void on_update(sys::state& state) noexcept override {
-		set_text(state, text::produce_simple_string(state, get_title_from_mode(state.map_state.active_map_mode)));
-	}
-};
-class topbar_map_legend_icon : public image_element_base {
-	int16_t get_frame_from_mode(map_mode::mode v) {
-		switch(v) {
-		case map_mode::mode::migration:
-		case map_mode::mode::rank:
-		case map_mode::mode::relation:
-		case map_mode::mode::rgo_output:
-		case map_mode::mode::supply:
-		case map_mode::mode::admin:
-		case map_mode::mode::civilization_level:
-		case map_mode::mode::colonial:
-			return 1;
-		case map_mode::mode::population:
-		case map_mode::mode::crisis:
-		case map_mode::mode::revolt:
-			return 3;
-		default:
-			return 0;
-		}
-	}
-public:
-	void on_update(sys::state& state) noexcept override {
-		frame = get_frame_from_mode(state.map_state.active_map_mode);
-	}
-};
-class topbar_map_legend_gradient_max : public simple_text_element_base {
-	std::string_view get_gradient_max_from_mode(map_mode::mode v) {
-		switch(v) {
-		case map_mode::mode::admin:
-			return "lg_max_mapmode_8";
-		case map_mode::mode::civilization_level:
-			return "lg_max_mapmode_19";
-		case map_mode::mode::colonial:
-			return "lg_max_mapmode_7";
-		case map_mode::mode::crisis:
-			return "lg_max_mapmode_21";
-		case map_mode::mode::migration:
-			return "lg_max_mapmode_18";
-		case map_mode::mode::population:
-			return "lg_max_mapmode_12";
-		case map_mode::mode::rank:
-			return "lg_max_mapmode_17";
-		case map_mode::mode::relation:
-			return "lg_max_mapmode_20";
-		case map_mode::mode::revolt:
-			return "lg_max_mapmode_3";
-		case map_mode::mode::rgo_output:
-			return "lg_max_mapmode_11";
-		case map_mode::mode::supply:
-			return "lg_max_mapmode_15";
-		default:
-			return "???";
-		}
-	}
-public:
-	void on_update(sys::state& state) noexcept override {
-		set_text(state, text::produce_simple_string(state, get_gradient_max_from_mode(state.map_state.active_map_mode)));
-	}
-};
-class topbar_map_legend_gradient_min : public simple_text_element_base {
-	std::string_view get_gradient_min_from_mode(map_mode::mode v) {
-		switch(v) {
-		case map_mode::mode::admin:
-			return "lg_min_mapmode_8";
-		case map_mode::mode::civilization_level:
-			return "lg_min_mapmode_19";
-		case map_mode::mode::colonial:
-			return "lg_min_mapmode_7";
-		case map_mode::mode::crisis:
-			return "lg_min_mapmode_21";
-		case map_mode::mode::migration:
-			return "lg_min_mapmode_18";
-		case map_mode::mode::population:
-			return "lg_min_mapmode_12";
-		case map_mode::mode::rank:
-			return "lg_min_mapmode_17";
-		case map_mode::mode::relation:
-			return "lg_min_mapmode_20";
-		case map_mode::mode::revolt:
-			return "lg_min_mapmode_3";
-		case map_mode::mode::rgo_output:
-			return "lg_min_mapmode_11";
-		case map_mode::mode::supply:
-			return "lg_min_mapmode_15";
-		default:
-			return "???";
-		}
-	}
-public:
-	void on_update(sys::state& state) noexcept override {
-		set_text(state, text::produce_simple_string(state, get_gradient_min_from_mode(state.map_state.active_map_mode)));
-	}
-};
-
-class topbar_map_legend : public window_element_base {
-public:
-	std::unique_ptr<element_base> make_child(sys::state& state, std::string_view name, dcon::gui_def_id id) noexcept override {
-		if(name == "legend_title") {
-			return make_element_by_type<topbar_map_legend_title>(state, id);
-		} else if(name == "gradient_icon") {
-			return make_element_by_type<topbar_map_legend_icon>(state, id);
-		} else if(name == "gradient_min") {
-			return make_element_by_type<topbar_map_legend_gradient_min>(state, id);
-		} else if(name == "gradient_max") {
-			return make_element_by_type<topbar_map_legend_gradient_max>(state, id);
-		} else {
-			return nullptr;
-		}
-	}
-};
-
 class topbar_window : public window_element_base {
 private:
 	dcon::nation_id current_nation{};
@@ -1782,45 +1614,26 @@ private:
 	std::vector<topbar_commodity_xport_icon*> export_icons;
 	std::vector<topbar_commodity_xport_icon*> produced_icons;
 	simple_text_element_base* atpeacetext = nullptr;
-	element_base* map_legend = nullptr;
-
-	bool get_needs_legend_from_mode(map_mode::mode v) {
-		switch(v) {
-		case map_mode::mode::migration:
-		case map_mode::mode::population:
-		case map_mode::mode::rank:
-		case map_mode::mode::relation:
-		case map_mode::mode::revolt:
-		case map_mode::mode::rgo_output:
-		case map_mode::mode::supply:
-		case map_mode::mode::admin:
-		case map_mode::mode::civilization_level:
-		case map_mode::mode::colonial:
-		case map_mode::mode::crisis:
-			return true;
-		default:
-			return false;
-		}
-	}
 
 public:
 	void on_create(sys::state& state) noexcept override {
 		window_element_base::on_create(state);
+		base_data.position.y += int16_t(1);
 
 		auto bg_pic = make_element_by_type<background_image>(state, "bg_main_menus");
 		background_pic = bg_pic.get();
 		add_child_to_back(std::move(bg_pic));
-
-		auto legend_win = make_element_by_type<topbar_map_legend>(state, "alice_map_legend_window");
-		map_legend = legend_win.get();
-		add_child_to_front(std::move(legend_win));
 
 		state.ui_state.topbar_window = this;
 		on_update(state);
 	}
 
 	std::unique_ptr<element_base> make_child(sys::state& state, std::string_view name, dcon::gui_def_id id) noexcept override {
-		if(name == "topbarbutton_production") {
+		if(name == "topbar_bg") {
+			return partially_transparent_image::make_element_by_type_alias(state, id);
+		} else if(name == "topbar_paper") {
+			return partially_transparent_image::make_element_by_type_alias(state, id);
+		} else if(name == "topbarbutton_production") {
 			auto btn = make_element_by_type<topbar_tab_button>(state, id);
 
 			auto tab = make_element_by_type<production_window>(state, "country_production");
@@ -1937,7 +1750,7 @@ public:
 		} else if(name == "politics_party_icon") {
 			return make_element_by_type<nation_ruling_party_ideology_plupp>(state, id);
 		} else if(name == "politics_ruling_party") {
-			return make_element_by_type<topbar_nation_ruling_party_text>(state, id);
+			return make_element_by_type<nation_ruling_party_text>(state, id);
 		} else if(name == "politics_supressionpoints_value") {
 			return make_element_by_type<nation_suppression_points_text>(state, id);
 		} else if(name == "politics_infamy_value") {
@@ -2018,8 +1831,6 @@ public:
 			Cyto::Any payload = current_nation;
 			impl_set(state, payload);
 		}
-
-		map_legend->set_visible(state, get_needs_legend_from_mode(state.map_state.active_map_mode));
 
 		for(auto& e : export_icons)
 			e->set_visible(state, false);
